@@ -1278,8 +1278,9 @@ async def process_incoming_email(rcpt_to: str, raw_data: bytes):
                                      msg, raw_data, to_addr)
                 return
 
-        logger.warning(f"[SMTP] No alias found for {to_addr}, routing to ALL admins (Bot1+Bot2)")
-        await _admin_fallback_all_bots(msg, to_addr, "unassigned")
+        logger.warning(f"[SMTP] No alias found for {to_addr}, routing to Bot1 first admin")
+        await _admin_fallback_email(bot1, bot1_col_logs, BOT1_SUPER_ADMIN_IDS,
+                                    msg, to_addr, to_addr, "unassigned")
     except Exception as e:
         logger.error(f"[SMTP] Error processing email for {rcpt_to}: {e}")
 
@@ -1337,20 +1338,6 @@ async def _deliver_email(bot_instance, col_aliases, col_users, col_logs,
         except Exception:
             pass
 
-async def _admin_fallback_all_bots(msg, alias_email, reason,
-                                    sender=None, subject=None, body=None,
-                                    clean_preview=None, dedupe_key=None):
-    for (bot_instance, col_logs, super_admin_ids) in [
-        (bot1, bot1_col_logs, BOT1_SUPER_ADMIN_IDS),
-        (bot2, bot2_col_logs, BOT2_SUPER_ADMIN_IDS),
-    ]:
-        await _admin_fallback_email(
-            bot_instance, col_logs, super_admin_ids,
-            msg, alias_email, alias_email, reason,
-            sender=sender, subject=subject, body=body,
-            clean_preview=clean_preview, dedupe_key=dedupe_key
-        )
-
 async def _admin_fallback_email(bot_instance, col_logs, super_admin_ids,
                                  msg, alias_email, original_to, reason,
                                  sender=None, subject=None, body=None,
@@ -1380,38 +1367,38 @@ async def _admin_fallback_email(bot_instance, col_logs, super_admin_ids,
         f"**Preview:**\n{short(clean_preview, 250)}"
     )
 
-    for admin_tg in super_admin_ids:
-        if dedupe_key is None:
-            msg_id = decode_str(msg.get("Message-ID", "")) or ""
-            this_dedupe = sha256(f"{msg_id}|{alias_email}|{subject}|{sender}|fallback|{admin_tg}")
-        else:
-            this_dedupe = sha256(f"{dedupe_key}|{admin_tg}")
+    admin_tg = next(iter(super_admin_ids))
+    if dedupe_key is None:
+        msg_id = decode_str(msg.get("Message-ID", "")) or ""
+        this_dedupe = sha256(f"{msg_id}|{alias_email}|{subject}|{sender}|fallback|{admin_tg}")
+    else:
+        this_dedupe = sha256(f"{dedupe_key}|{admin_tg}")
 
-        log_doc = {
-            "_id": this_dedupe, "dedupe_key": this_dedupe,
-            "alias_email": alias_email or original_to or "unknown",
-            "original_to": original_to or alias_email or "unknown",
-            "tg_user_id": admin_tg, "from": sender, "subject": subject,
-            "date_header": decode_str(msg.get("Date", "")),
-            "received_at": now_utc(), "snippet": short(clean_preview, 220),
-            "body": body, "read": False, "deleted": False, "starred": False,
-            "admin_fallback": True, "fallback_reason": reason,
-        }
-        try:
-            await col_logs.insert_one(log_doc)
-        except Exception:
-            pass
+    log_doc = {
+        "_id": this_dedupe, "dedupe_key": this_dedupe,
+        "alias_email": alias_email or original_to or "unknown",
+        "original_to": original_to or alias_email or "unknown",
+        "tg_user_id": admin_tg, "from": sender, "subject": subject,
+        "date_header": decode_str(msg.get("Date", "")),
+        "received_at": now_utc(), "snippet": short(clean_preview, 220),
+        "body": body, "read": False, "deleted": False, "starred": False,
+        "admin_fallback": True, "fallback_reason": reason,
+    }
+    try:
+        await col_logs.insert_one(log_doc)
+    except Exception:
+        pass
 
-        try:
-            await bot_instance.send_message(
-                admin_tg, text,
-                buttons=[
-                    [Button.inline("📖 Read Full Mail", cb("ML", this_dedupe[:20]))],
-                    [Button.inline("🛡️ Admin Inbox", cb("A", "admin_inbox", "0"))]
-                ]
-            )
-        except Exception:
-            pass
+    try:
+        await bot_instance.send_message(
+            admin_tg, text,
+            buttons=[
+                [Button.inline("📖 Read Full Mail", cb("ML", this_dedupe[:20]))],
+                [Button.inline("🛡️ Admin Inbox", cb("A", "admin_inbox", "0"))]
+            ]
+        )
+    except Exception:
+        pass
 
 
 # =====================================================================
