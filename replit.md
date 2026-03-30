@@ -94,3 +94,25 @@ Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHea
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+
+## MasterMailBot (`master_bot.py`)
+
+Unified Python script running two Telegram email-forwarding bots simultaneously (Bot 1 for Nihal, Bot 2 for Maruf) with a built-in SMTP server (aiosmtpd on port 25).
+
+### Key Features
+- **Dual bot**: Both bots share identical functionality but use separate MongoDB databases, alias caches, and Telegram sessions
+- **SMTP server**: aiosmtpd replaces Gmail/IMAP polling; incoming emails route to the correct bot/user automatically
+- **uvloop**: High-performance event loop (falls back to default asyncio if not installed)
+- **TTLCache**: In-memory LRU+TTL cache (OrderedDict-based) for users, counts, and aliases — minimizes MongoDB hits
+- **Cross-bot email uniqueness**: Same email address cannot be assigned in both bots simultaneously
+- **Admin fallback**: Unassigned/expired emails broadcast to ALL super admin IDs across both bots
+- **Background cache refresh**: Alias caches refresh every 30 seconds via asyncio task
+
+### Dependencies
+`telethon`, `motor`, `aiosmtpd`, `python-dotenv`, `uvloop`
+
+### Config
+- Bot credentials, MongoDB URIs, and super admin IDs are set via environment variables or hardcoded defaults
+- SMTP binds to `SMTP_HOST`/`SMTP_PORT` (default `0.0.0.0:25`)
+- Session files: `bot1_session`, `bot2_session`
+- Timezone: `Asia/Dhaka`
