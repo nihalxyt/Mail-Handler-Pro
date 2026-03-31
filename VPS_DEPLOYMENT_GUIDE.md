@@ -1,4 +1,4 @@
-# VPS Deployment Guide — Mail Bot System
+# VPS Deployment Guide — ZayMail (zayvex.cloud)
 
 ## আপনার প্রজেক্টে ৩টি আলাদা সার্ভিস আছে:
 
@@ -173,7 +173,7 @@ sudo nano /etc/nginx/sites-available/mailbot
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com;  # আপনার ডোমেইন দিন
+    server_name zayvex.cloud;
 
     # ===== Frontend (Static React Files) =====
     root /home/your-user/mailbot/artifacts/web-mail/dist/public;
@@ -228,15 +228,58 @@ sudo systemctl enable nginx
 
 ---
 
-## ধাপ ৬: SSL Certificate (HTTPS) — বিনামূল্যে
+## ধাপ ৬: Cloudflare Tunnel দিয়ে HTTPS (zayvex.cloud)
+
+Cloudflare Tunnel ব্যবহার করলে SSL certificate, Nginx reverse proxy কিছুই লাগে না! Cloudflare সব handle করবে।
 
 ```bash
-sudo certbot --nginx -d your-domain.com
-# Follow the prompts, select redirect HTTP to HTTPS
+# cloudflared install
+curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb
 
-# Auto-renew test
-sudo certbot renew --dry-run
+# Login to Cloudflare
+cloudflared tunnel login
+
+# Tunnel তৈরি করুন
+cloudflared tunnel create zaymail
+
+# Config file তৈরি করুন
+mkdir -p ~/.cloudflared
+nano ~/.cloudflared/config.yml
 ```
+
+**config.yml:**
+```yaml
+tunnel: zaymail
+credentials-file: /home/your-user/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  # API requests
+  - hostname: zayvex.cloud
+    path: /api/*
+    service: http://localhost:8080
+  # Frontend (static files via Nginx)
+  - hostname: zayvex.cloud
+    service: http://localhost:80
+  # Catch-all
+  - service: http_status:404
+```
+
+```bash
+# DNS record যোগ করুন (Cloudflare এ CNAME)
+cloudflared tunnel route dns zaymail zayvex.cloud
+
+# Tunnel চালু করুন (PM2 দিয়ে)
+pm2 start "cloudflared tunnel run zaymail" --name cloudflare-tunnel
+pm2 save
+```
+
+**Nginx তখনও লাগবে** static files serve করার জন্য (port 80 এ), কিন্তু SSL/HTTPS Cloudflare Tunnel handle করবে। Nginx config এ `listen 80;` আর `server_name zayvex.cloud;` রাখুন।
+
+এই সেটআপে:
+- Cloudflare Tunnel → HTTPS terminate করে
+- zayvex.cloud → Tunnel → Nginx (frontend) + API Server (backend)
+- কোনো port open করতে হবে না VPS এ (extra secure!)
 
 ---
 

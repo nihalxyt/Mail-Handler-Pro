@@ -110,16 +110,17 @@ Utility scripts package. Run scripts via `pnpm --filter @workspace/scripts run <
 
 ### `artifacts/web-mail` (`@workspace/web-mail`)
 
-React+Vite web email client with Tailwind CSS, shadcn/ui components, and React Router. Provides a polished inbox UI for email aliases managed by the Telegram bot.
+React+Vite web email client branded as **ZayMail** with Tailwind CSS, shadcn/ui components, and React Router. Domain: `zayvex.cloud`.
 
-- Pages: Login, Inbox (paginated, search, filter), Mail Detail (safe HTML rendering via sandboxed iframe with hardened DOMPurify — remote images blocked, style/class stripped, link protocols restricted), Settings (password change, theme toggle), Admin Panel (Dashboard, Users, Aliases, Logs)
+- Pages: Login (modern gradient UI, no "create account"), Inbox (paginated, search, filter, pull-to-refresh, swipe-to-delete), Mail Detail (full HTML rendering with inline images toggle, full-view mode, download/open-in-tab options), Settings (password change, theme toggle), Admin Panel (Dashboard, Users, Aliases, Logs)
 - Auth: Cookie-based sessions via `/api/auth/*` endpoints (httpOnly JWT cookies)
-- Account switching: Header dropdown to switch between user's email aliases
-- Theme: Indigo/violet color palette with light/dark/system modes, glass effects, custom scrollbar styling
+- Account switching: mail.tm-style dropdown with colored avatar initials per alias, active indicator, switch with loading state
+- Theme: Indigo/violet color palette with light/dark/system modes, glass effects, gradient branding, custom scrollbar styling
 - Admin panel: Dashboard with stats cards, user management (role/status changes), alias management (activate/deactivate, extend expiry, reset password), activity logs with filtering
 - Toast notifications: sonner for all admin actions and user feedback
 - API proxy: Vite dev server proxies `/api` to api-server on port 8080
 - Responsive: Collapsible desktop sidebar (localStorage-persisted) + mobile bottom nav layout
+- Credit footer: "Built by NiHAL @N2X4E" in sidebar and login page
 - Dependencies: react-router-dom, dompurify, lucide-react, sonner, shadcn/ui components (button, badge, card, dropdown-menu, input, label, separator, skeleton, tooltip)
 
 ## MasterMailBot (`master_bot.py`)

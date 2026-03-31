@@ -21,7 +21,7 @@ function LoadingScreen() {
             <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
           </div>
         </div>
-        <p className="text-sm text-muted-foreground font-medium">Loading MailBox...</p>
+        <p className="text-sm text-muted-foreground font-medium">Loading ZayMail...</p>
       </div>
     </div>
   );
