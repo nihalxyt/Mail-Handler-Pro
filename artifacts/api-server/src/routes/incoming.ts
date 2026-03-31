@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { getDb, getAllDbKeys } from "../lib/mongo";
 import type { AliasDoc, MailLogDoc, UserDoc } from "../lib/mongo";
 import { logger } from "../lib/logger";
+import { notifyUserNewMail, notifyAdminFallback } from "../lib/telegram";
 import type { OptionalId } from "mongodb";
 
 const router: IRouter = Router();
@@ -107,6 +108,15 @@ async function deliverEmail(
       throw err;
     }
 
+    await notifyAdminFallback(
+      dbKey,
+      "user_inactive",
+      sender || "",
+      subject || "(No Subject)",
+      snippet,
+      toAddr
+    );
+
     logger.info({ to: toAddr, reason: "user_inactive" }, "User not active — stored as admin fallback");
     return { stored: true, duplicate: false };
   }
@@ -141,6 +151,18 @@ async function deliverEmail(
     { tg_user_id: alias.tg_user_id },
     { $inc: { "stats.total_mails": 1 } }
   );
+
+  const shouldNotify = user.notifications !== false;
+  if (shouldNotify) {
+    await notifyUserNewMail(
+      dbKey,
+      alias.tg_user_id,
+      sender || "",
+      subject || "(No Subject)",
+      snippet,
+      toAddr
+    );
+  }
 
   logger.info({ to: toAddr, dedupeKey, bot: botLabel }, "Email stored via API");
   return { stored: true, duplicate: false };
@@ -213,6 +235,15 @@ router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
           if (mongoErr?.code !== 11000) throw err;
         }
 
+        await notifyAdminFallback(
+          key,
+          "expired",
+          sender || "",
+          subject || "(No Subject)",
+          makeSnippet(body || ""),
+          toAddr
+        );
+
         logger.info({ to: toAddr, reason: "inactive_or_expired" }, "Alias not deliverable — stored as fallback");
         matched = true;
         break;
@@ -234,8 +265,8 @@ router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
     }
 
     if (!matched) {
-      const firstKey = allKeys[0];
-      const db = firstKey ? getDb(firstKey) : null;
+      const firstKey = allKeys[0] || "bot1";
+      const db = getDb(firstKey);
       if (db) {
         const unassignedDedupeKey = makeDedupeKey(
           messageId || "",
@@ -271,6 +302,15 @@ router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
           const mongoErr = err as { code?: number };
           if (mongoErr?.code !== 11000) throw err;
         }
+
+        await notifyAdminFallback(
+          firstKey as "bot1" | "bot2",
+          "unassigned",
+          sender || "",
+          subject || "(No Subject)",
+          makeSnippet(body || ""),
+          toAddr
+        );
       }
 
       logger.warn({ to: toAddr }, "No alias found — stored as unassigned fallback");
