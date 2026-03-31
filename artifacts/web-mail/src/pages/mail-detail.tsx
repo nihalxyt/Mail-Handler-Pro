@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useLocation } from "wouter";
+import { useParams, useNavigate } from "react-router-dom";
 import { api, type MailDetail } from "@/lib/api";
 import DOMPurify from "dompurify";
 import {
@@ -21,49 +21,62 @@ import {
 } from "lucide-react";
 
 function sanitizeHtml(html: string): string {
-  return DOMPurify.sanitize(html, {
+  const clean = DOMPurify.sanitize(html, {
     ALLOWED_TAGS: [
       "a", "abbr", "address", "b", "bdi", "bdo", "blockquote", "br",
       "caption", "cite", "code", "col", "colgroup", "dd", "del", "details",
       "dfn", "div", "dl", "dt", "em", "figcaption", "figure", "h1", "h2",
-      "h3", "h4", "h5", "h6", "hr", "i", "img", "ins", "kbd", "li",
+      "h3", "h4", "h5", "h6", "hr", "i", "ins", "kbd", "li",
       "mark", "ol", "p", "pre", "q", "rp", "rt", "ruby", "s", "samp",
       "section", "small", "span", "strong", "sub", "summary", "sup",
       "table", "tbody", "td", "tfoot", "th", "thead", "time", "tr", "u",
       "ul", "var", "wbr", "center", "font",
     ],
     ALLOWED_ATTR: [
-      "href", "src", "alt", "title", "width", "height", "style", "class",
+      "href", "alt", "title", "width", "height",
       "target", "rel", "colspan", "rowspan", "align", "valign", "bgcolor",
       "border", "cellpadding", "cellspacing", "color", "face", "size",
     ],
     ALLOW_DATA_ATTR: false,
-    ADD_ATTR: ["target"],
-    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "input", "textarea", "button"],
+    FORBID_TAGS: ["script", "style", "iframe", "object", "embed", "form", "input", "textarea", "button", "img"],
+    FORBID_ATTR: ["src", "style", "class"],
   });
+
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = clean;
+  wrapper.querySelectorAll("a").forEach((a) => {
+    a.setAttribute("rel", "noopener noreferrer");
+    a.setAttribute("target", "_blank");
+    const href = a.getAttribute("href") || "";
+    if (!/^https?:\/\//i.test(href) && !href.startsWith("mailto:")) {
+      a.removeAttribute("href");
+    }
+  });
+
+  return wrapper.innerHTML;
 }
 
 export default function MailDetailPage() {
-  const params = useParams<{ id: string }>();
-  const [, navigate] = useLocation();
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [mail, setMail] = useState<MailDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const fetchMail = useCallback(async () => {
-    if (!params.id) return;
+    if (!id) return;
     setLoading(true);
     setError("");
     try {
-      const data = await api.mail(decodeURIComponent(params.id));
+      const data = await api.mail(decodeURIComponent(id!));
       setMail(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load email");
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [id]);
 
   useEffect(() => {
     fetchMail();
@@ -100,7 +113,6 @@ export default function MailDetailPage() {
             overflow-wrap: break-word;
           }
           a { color: #3b82f6; }
-          img { max-width: 100%; height: auto; }
           table { max-width: 100%; }
           pre { max-width: 100%; overflow-x: auto; }
           blockquote {

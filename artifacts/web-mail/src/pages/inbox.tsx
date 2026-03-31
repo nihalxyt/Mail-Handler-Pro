@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useLocation } from "wouter";
+import { useNavigate } from "react-router-dom";
 import { api, type MailSummary, type InboxStats } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { formatDate, extractSenderName, getInitials, avatarColor } from "@/lib/utils";
@@ -33,7 +33,7 @@ const FILTERS = [
 const PAGE_SIZE = 20;
 
 export default function InboxPage() {
-  const [, navigate] = useLocation();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [mails, setMails] = useState<MailSummary[]>([]);
   const [stats, setStats] = useState<InboxStats | null>(null);

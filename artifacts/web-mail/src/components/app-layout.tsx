@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
 import { cn } from "@/lib/utils";
@@ -31,15 +31,16 @@ const NAV_ITEMS = [
 ] as const;
 
 export default function AppLayout({ children }: { children: ReactNode }) {
-  const [location, navigate] = useLocation();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { user, switchAccount } = useAuth();
   const { theme, setTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return localStorage.getItem("sidebar-collapsed") === "true";
   });
 
-  const isMailDetail = location.startsWith("/mail/");
-  const activePath = isMailDetail ? "/" : location;
+  const isMailDetail = location.pathname.startsWith("/mail/");
+  const activePath = isMailDetail ? "/" : location.pathname;
 
   const themeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
   const ThemeIcon = themeIcon;

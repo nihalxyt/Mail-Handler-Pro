@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 import LoginPage from "@/pages/login";
@@ -21,16 +21,19 @@ function LoadingScreen() {
 function AuthenticatedApp() {
   return (
     <AppLayout>
-      <Switch>
-        <Route path="/" component={InboxPage} />
-        <Route path="/mail/:id" component={MailDetailPage} />
-        <Route path="/settings" component={SettingsPage} />
-        <Route>
-          <div className="flex items-center justify-center flex-1 p-8">
-            <p className="text-muted-foreground">Page not found</p>
-          </div>
-        </Route>
-      </Switch>
+      <Routes>
+        <Route path="/" element={<InboxPage />} />
+        <Route path="/mail/:id" element={<MailDetailPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route
+          path="*"
+          element={
+            <div className="flex items-center justify-center flex-1 p-8">
+              <p className="text-muted-foreground">Page not found</p>
+            </div>
+          }
+        />
+      </Routes>
     </AppLayout>
   );
 }
@@ -47,9 +50,9 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <AppRouter />
-        </WouterRouter>
+        </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>
   );
