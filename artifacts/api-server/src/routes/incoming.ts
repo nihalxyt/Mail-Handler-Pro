@@ -16,8 +16,7 @@ function apiKeyAuth(
   res: import("express").Response,
   next: import("express").NextFunction
 ): void {
-  const key =
-    req.headers["x-api-key"] || req.query.apiKey;
+  const key = req.headers["x-api-key"];
   if (!INCOMING_API_KEY || !key || key !== INCOMING_API_KEY) {
     res.status(403).json({ error: "Invalid API key" });
     return;

@@ -26,9 +26,18 @@ app.use(
     },
   }),
 );
+const ALLOWED_ORIGINS = process.env["CORS_ORIGINS"]
+  ? process.env["CORS_ORIGINS"].split(",").map((s) => s.trim())
+  : [];
+
 app.use(
   cors({
-    origin: true,
+    origin:
+      ALLOWED_ORIGINS.length > 0
+        ? ALLOWED_ORIGINS
+        : process.env["NODE_ENV"] === "production"
+          ? false
+          : true,
     credentials: true,
   }),
 );

@@ -902,7 +902,7 @@ async def show_web_passwords(event, col_aliases, edit=False):
         if not expired:
             btns.append([
                 Button.inline(f"🔄 Reset: {short(em, 25)}", cb("WP", "reset", token)),
-                Button.inline(f"👁️ View: {short(em, 25)}", cb("WP", "view", token))
+                Button.inline(f"ℹ️ Status: {short(em, 25)}", cb("WP", "view", token))
             ])
 
     lines.append("\n\n💡 Use these credentials to log into the web inbox.")
