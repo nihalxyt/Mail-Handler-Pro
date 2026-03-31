@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { getDb, getAllDbKeys } from "../lib/mongo";
 import type { AliasDoc, MailLogDoc, UserDoc } from "../lib/mongo";
 import { logger } from "../lib/logger";
+import type { OptionalId } from "mongodb";
 
 const router: IRouter = Router();
 
@@ -33,6 +34,118 @@ interface IncomingMailBody {
   date?: string;
 }
 
+function makeDedupeKey(
+  messageId: string,
+  toAddr: string,
+  subject: string,
+  sender: string,
+  suffix?: string
+): string {
+  const input = suffix
+    ? `${messageId}|${toAddr}|${subject}|${sender}|${suffix}`
+    : `${messageId}|${toAddr}|${subject}|${sender}`;
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
+function makeSnippet(body: string): string {
+  return (body || "").replace(/<[^>]+>/g, "").substring(0, 220).trim() || "";
+}
+
+async function deliverEmail(
+  dbKey: "bot1" | "bot2",
+  alias: AliasDoc,
+  sender: string,
+  subject: string,
+  body: string,
+  messageId: string,
+  dateHeader: string,
+  toAddr: string
+): Promise<{ stored: boolean; duplicate: boolean }> {
+  const db = getDb(dbKey);
+  if (!db) return { stored: false, duplicate: false };
+
+  const userCol = db.collection<UserDoc>("users");
+  const user = await userCol.findOne({ tg_user_id: alias.tg_user_id });
+
+  const dedupeKey = makeDedupeKey(messageId, toAddr, subject, sender);
+  const snippet = makeSnippet(body);
+  const botLabel = dbKey === "bot1" ? "Bot1" : "Bot2";
+
+  if (!user || user.status !== "active") {
+    const fallbackDedupeKey = makeDedupeKey(
+      messageId,
+      toAddr,
+      subject,
+      sender,
+      `user_inactive_fallback`
+    );
+    const fallbackDoc: OptionalId<MailLogDoc> = {
+      _id: fallbackDedupeKey,
+      dedupe_key: fallbackDedupeKey,
+      alias_email: toAddr,
+      original_to: toAddr,
+      tg_user_id: alias.tg_user_id,
+      from: sender || "",
+      subject: subject || "(No Subject)",
+      date_header: dateHeader || new Date().toISOString(),
+      received_at: new Date(),
+      snippet,
+      body: body || "",
+      read: false,
+      deleted: false,
+      starred: false,
+      bot: botLabel,
+      admin_fallback: true,
+      fallback_reason: "user_inactive",
+    };
+
+    try {
+      await db.collection<MailLogDoc>("mail_logs").insertOne(fallbackDoc);
+    } catch (err: unknown) {
+      const mongoErr = err as { code?: number };
+      if (mongoErr?.code === 11000) return { stored: true, duplicate: true };
+      throw err;
+    }
+
+    logger.info({ to: toAddr, reason: "user_inactive" }, "User not active — stored as admin fallback");
+    return { stored: true, duplicate: false };
+  }
+
+  const logDoc: OptionalId<MailLogDoc> = {
+    _id: dedupeKey,
+    dedupe_key: dedupeKey,
+    alias_email: toAddr,
+    original_to: toAddr,
+    tg_user_id: alias.tg_user_id,
+    from: sender || "",
+    subject: subject || "(No Subject)",
+    date_header: dateHeader || new Date().toISOString(),
+    received_at: new Date(),
+    snippet,
+    body: body || "",
+    read: false,
+    deleted: false,
+    starred: false,
+    bot: botLabel,
+  };
+
+  try {
+    await db.collection<MailLogDoc>("mail_logs").insertOne(logDoc);
+  } catch (err: unknown) {
+    const mongoErr = err as { code?: number };
+    if (mongoErr?.code === 11000) return { stored: true, duplicate: true };
+    throw err;
+  }
+
+  await userCol.updateOne(
+    { tg_user_id: alias.tg_user_id },
+    { $inc: { "stats.total_mails": 1 } }
+  );
+
+  logger.info({ to: toAddr, dedupeKey, bot: botLabel }, "Email stored via API");
+  return { stored: true, duplicate: false };
+}
+
 router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
   try {
     const {
@@ -52,10 +165,12 @@ router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
     const toAddr = to.toLowerCase().trim();
     const allKeys = getAllDbKeys();
     let matched = false;
+    let isDuplicate = false;
 
     for (const key of allKeys) {
       const db = getDb(key);
       if (!db) continue;
+
       const aliasCol = db.collection<AliasDoc>("aliases");
       const alias = await aliasCol.findOne({ alias_email: toAddr });
       if (!alias) continue;
@@ -64,57 +179,57 @@ router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
         !alias.active ||
         (alias.expires_at && new Date(alias.expires_at) < new Date())
       ) {
-        logger.info({ to: toAddr, reason: "inactive_or_expired" }, "Alias not deliverable");
-        continue;
-      }
+        const expiredDedupeKey = makeDedupeKey(
+          messageId || "",
+          toAddr,
+          subject || "",
+          sender || "",
+          "expired_fallback"
+        );
+        const fallbackDoc: OptionalId<MailLogDoc> = {
+          _id: expiredDedupeKey,
+          dedupe_key: expiredDedupeKey,
+          alias_email: toAddr,
+          original_to: toAddr,
+          tg_user_id: alias.tg_user_id,
+          from: sender || "",
+          subject: subject || "(No Subject)",
+          date_header: dateHeader || new Date().toISOString(),
+          received_at: new Date(),
+          snippet: makeSnippet(body || ""),
+          body: body || "",
+          read: false,
+          deleted: false,
+          starred: false,
+          bot: key === "bot1" ? "Bot1" : "Bot2",
+          admin_fallback: true,
+          fallback_reason: "expired",
+        };
 
-      const userCol = db.collection<UserDoc>("users");
-      const user = await userCol.findOne({ tg_user_id: alias.tg_user_id });
-      if (!user || user.status !== "active") {
-        logger.info({ to: toAddr, reason: "user_inactive" }, "User not active");
-        continue;
-      }
-
-      const dedupeInput = `${messageId || ""}|${toAddr}|${subject || ""}|${sender || ""}`;
-      const dedupeKey = crypto
-        .createHash("sha256")
-        .update(dedupeInput)
-        .digest("hex");
-
-      const snippet =
-        (body || "").replace(/<[^>]+>/g, "").substring(0, 220).trim() || "";
-
-      const logDoc: MailLogDoc = {
-        _id: dedupeKey,
-        dedupe_key: dedupeKey,
-        alias_email: toAddr,
-        original_to: toAddr,
-        tg_user_id: alias.tg_user_id,
-        from: sender || "",
-        subject: subject || "(No Subject)",
-        date_header: dateHeader || new Date().toISOString(),
-        received_at: new Date(),
-        snippet,
-        body: body || "",
-        read: false,
-        deleted: false,
-        starred: false,
-        bot: key === "bot1" ? "Bot1" : "Bot2",
-      };
-
-      const logCol = db.collection<MailLogDoc>("mail_logs");
-      try {
-        await logCol.insertOne(logDoc as any);
-      } catch (err: any) {
-        if (err?.code === 11000) {
-          res.json({ success: true, duplicate: true });
-          return;
+        try {
+          await db.collection<MailLogDoc>("mail_logs").insertOne(fallbackDoc);
+        } catch (err: unknown) {
+          const mongoErr = err as { code?: number };
+          if (mongoErr?.code !== 11000) throw err;
         }
-        throw err;
+
+        logger.info({ to: toAddr, reason: "inactive_or_expired" }, "Alias not deliverable — stored as fallback");
+        matched = true;
+        break;
       }
 
-      matched = true;
-      logger.info({ to: toAddr, dedupeKey }, "Email stored via API");
+      const result = await deliverEmail(
+        key,
+        alias,
+        sender || "",
+        subject || "",
+        body || "",
+        messageId || "",
+        dateHeader || "",
+        toAddr
+      );
+      matched = result.stored;
+      isDuplicate = result.duplicate;
       break;
     }
 
@@ -122,15 +237,17 @@ router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
       const firstKey = allKeys[0];
       const db = firstKey ? getDb(firstKey) : null;
       if (db) {
-        const dedupeInput = `${messageId || ""}|${toAddr}|${subject || ""}|${sender || ""}|fallback`;
-        const dedupeKey = crypto
-          .createHash("sha256")
-          .update(dedupeInput)
-          .digest("hex");
+        const unassignedDedupeKey = makeDedupeKey(
+          messageId || "",
+          toAddr,
+          subject || "",
+          sender || "",
+          "unassigned_fallback"
+        );
 
-        const logDoc = {
-          _id: dedupeKey,
-          dedupe_key: dedupeKey,
+        const fallbackDoc: OptionalId<MailLogDoc> = {
+          _id: unassignedDedupeKey,
+          dedupe_key: unassignedDedupeKey,
           alias_email: toAddr,
           original_to: toAddr,
           tg_user_id: 0,
@@ -138,8 +255,7 @@ router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
           subject: subject || "(No Subject)",
           date_header: dateHeader || new Date().toISOString(),
           received_at: new Date(),
-          snippet:
-            (body || "").replace(/<[^>]+>/g, "").substring(0, 220).trim() || "",
+          snippet: makeSnippet(body || ""),
           body: body || "",
           read: false,
           deleted: false,
@@ -150,16 +266,17 @@ router.post("/incoming-mail", apiKeyAuth, async (req, res) => {
         };
 
         try {
-          await db.collection("mail_logs").insertOne(logDoc);
-        } catch (err: any) {
-          if (err?.code !== 11000) throw err;
+          await db.collection<MailLogDoc>("mail_logs").insertOne(fallbackDoc);
+        } catch (err: unknown) {
+          const mongoErr = err as { code?: number };
+          if (mongoErr?.code !== 11000) throw err;
         }
       }
 
-      logger.warn({ to: toAddr }, "No alias found — fallback stored");
+      logger.warn({ to: toAddr }, "No alias found — stored as unassigned fallback");
     }
 
-    res.json({ success: true, matched });
+    res.json({ success: true, matched, duplicate: isDuplicate });
   } catch (err) {
     logger.error({ err }, "Incoming mail error");
     res.status(500).json({ error: "Internal server error" });

@@ -77,7 +77,6 @@ router.post("/auth/login", async (req, res) => {
           dbLabel: a.dbLabel,
         })),
       },
-      token,
     });
   } catch (err) {
     console.error("Login error:", err);
@@ -144,7 +143,6 @@ router.post("/auth/switch", authMiddleware, async (req, res) => {
       success: true,
       email: result.alias.alias_email,
       dbKey: result.dbKey,
-      token,
     });
   } catch (err) {
     console.error("Switch error:", err);
