@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTheme } from "@/contexts/theme-context";
 import { Mail, Eye, EyeOff, Sun, Moon, Monitor, ArrowRight, Lock } from "lucide-react";
+import DevFooter from "@/components/dev-footer";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -143,11 +144,8 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <footer className="relative z-10 py-4 text-center">
-        <p className="text-[11px] text-muted-foreground/50">
-          Built by <span className="font-medium text-muted-foreground/70">NiHAL</span>{" "}
-          <a href="https://t.me/N2X4E" target="_blank" rel="noopener noreferrer" className="text-primary/60 hover:text-primary transition-colors">@N2X4E</a>
-        </p>
+      <footer className="relative z-10">
+        <DevFooter variant="login" />
       </footer>
     </div>
   );

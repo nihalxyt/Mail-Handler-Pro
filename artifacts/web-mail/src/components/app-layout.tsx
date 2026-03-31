@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import DevFooter from "@/components/dev-footer";
 
 const NAV_ITEMS = [
   { path: "/", label: "Inbox", icon: Inbox },
@@ -253,14 +254,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 )
               )}
             </div>
-            {!sidebarCollapsed && (
-              <div className="p-3 border-t">
-                <p className="text-[10px] text-muted-foreground/40 text-center">
-                  Built by NiHAL{" "}
-                  <a href="https://t.me/N2X4E" target="_blank" rel="noopener noreferrer" className="text-primary/40 hover:text-primary/60">@N2X4E</a>
-                </p>
-              </div>
-            )}
+            {!sidebarCollapsed && <DevFooter variant="sidebar" />}
           </aside>
 
           <main className="flex-1 overflow-hidden flex flex-col">{children}</main>

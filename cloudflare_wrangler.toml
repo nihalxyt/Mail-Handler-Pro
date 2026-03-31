@@ -1,9 +1,9 @@
-name = "email-forwarder"
+name = "zaymail-email-worker"
 main = "cloudflare_email_worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-01"
 
 [vars]
-API_ENDPOINT = "https://your-api-domain.com"
+API_ENDPOINT = "https://zayvex.cloud"
 
 # Set INCOMING_MAIL_API_KEY as a secret:
 # wrangler secret put INCOMING_MAIL_API_KEY
