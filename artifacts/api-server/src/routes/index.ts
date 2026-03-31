@@ -5,6 +5,7 @@ import inboxRouter from "./inbox";
 import mailRouter from "./mail";
 import aliasesRouter from "./aliases";
 import incomingRouter from "./incoming";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(inboxRouter);
 router.use(mailRouter);
 router.use(aliasesRouter);
 router.use(incomingRouter);
+router.use(adminRouter);
 
 export default router;

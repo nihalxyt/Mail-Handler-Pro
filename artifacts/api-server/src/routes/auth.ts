@@ -94,10 +94,18 @@ router.get("/auth/me", authMiddleware, async (req, res) => {
     const user = req.user!;
     const allAliases = await findAllAliasesByTgUser(user.tgUserId);
 
+    const db = (await import("../lib/mongo")).getDb(user.dbKey);
+    let role = "user";
+    if (db) {
+      const userDoc = await db.collection("users").findOne({ tg_user_id: user.tgUserId });
+      if (userDoc) role = userDoc.role || "user";
+    }
+
     res.json({
       email: user.aliasEmail,
       tgUserId: user.tgUserId,
       dbKey: user.dbKey,
+      role,
       aliases: allAliases.map((a) => ({
         email: a.alias.alias_email,
         active: a.alias.active,

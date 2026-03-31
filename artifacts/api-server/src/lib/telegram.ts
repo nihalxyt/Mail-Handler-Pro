@@ -3,6 +3,9 @@ import { logger } from "./logger";
 const BOT1_TOKEN = process.env["BOT1_TG_BOT_TOKEN"] || "";
 const BOT2_TOKEN = process.env["BOT2_TG_BOT_TOKEN"] || "";
 
+const BOT1_LOG_CHANNEL = process.env["BOT1_ADMIN_LOG_CHANNEL_ID"] || "";
+const BOT2_LOG_CHANNEL = process.env["BOT2_ADMIN_LOG_CHANNEL_ID"] || "";
+
 const BOT1_SUPER_ADMINS = (process.env["BOT1_SUPER_ADMIN_IDS"] || "7166047321")
   .split(",")
   .map((s) => parseInt(s.trim(), 10))
@@ -114,4 +117,40 @@ export async function notifyAdminFallback(
     `*Preview:*\n${truncate(snippet, 250)}`;
 
   await sendTelegramMessage(token, adminId, text);
+}
+
+export async function sendAdminLog(
+  dbKey: "bot1" | "bot2",
+  action: string,
+  adminName: string,
+  targetType: string,
+  targetId: string,
+  details: string
+): Promise<void> {
+  const token = getBotToken(dbKey);
+  const channelId = dbKey === "bot1" ? BOT1_LOG_CHANNEL : BOT2_LOG_CHANNEL;
+
+  if (!channelId || !token) return;
+
+  const actionEmojis: Record<string, string> = {
+    role_change: "👑",
+    user_ban: "🔨",
+    user_approve: "✅",
+    user_pending: "⏳",
+    alias_activate: "🟢",
+    alias_deactivate: "🔴",
+    alias_extend: "📅",
+    password_reset: "🔐",
+  };
+
+  const emoji = actionEmojis[action] || "📋";
+  const text =
+    `${emoji} *Admin Action*\n━━━━━━━━━━━━━━━━━━━━\n\n` +
+    `👤 *Admin:* ${adminName}\n` +
+    `📌 *Action:* \`${action}\`\n` +
+    `🎯 *${targetType}:* \`${truncate(targetId, 40)}\`\n` +
+    `📝 *Details:* ${truncate(details, 100)}\n` +
+    `🕐 *Time:* ${new Date().toISOString()}`;
+
+  await sendTelegramMessage(token, parseInt(channelId), text);
 }
