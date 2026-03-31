@@ -25,7 +25,7 @@ export default function DevFooter({ variant = "inline", className }: DevFooterPr
               Developed by
             </span>
             <span className="text-[11px] leading-tight font-semibold text-muted-foreground/60 group-hover:text-foreground/80 transition-colors tracking-tight">
-              NiHAL
+              NiHAL x
             </span>
           </div>
         </a>
@@ -53,7 +53,7 @@ export default function DevFooter({ variant = "inline", className }: DevFooterPr
             </span>
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold tracking-tight text-muted-foreground/60 group-hover:text-foreground/80 transition-colors">
-                NiHAL
+                NiHAL x
               </span>
               <span className="text-[10px] text-primary/50 group-hover:text-primary/80 font-medium transition-colors">
                 @N2X4E
@@ -77,7 +77,7 @@ export default function DevFooter({ variant = "inline", className }: DevFooterPr
         className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/40 hover:text-muted-foreground/70 transition-colors"
       >
         <span>by</span>
-        <span className="font-semibold">NiHAL</span>
+        <span className="font-semibold">NiHAL x</span>
         <span className="text-primary/50">@N2X4E</span>
       </a>
     </div>
