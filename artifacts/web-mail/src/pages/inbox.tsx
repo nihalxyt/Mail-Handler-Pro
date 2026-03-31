@@ -12,9 +12,9 @@ import {
   Inbox as InboxIcon,
   MailOpen,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   Filter,
+  Trash2,
+  MailCheck,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -30,46 +30,124 @@ const FILTERS = [
   { value: "starred", label: "Starred", icon: Star },
 ] as const;
 
+const PAGE_SIZE = 20;
+
 export default function InboxPage() {
   const [, navigate] = useLocation();
   const { user } = useAuth();
   const [mails, setMails] = useState<MailSummary[]>([]);
   const [stats, setStats] = useState<InboxStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const pullStartY = useRef<number>(0);
+  const pullDelta = useRef<number>(0);
+  const pullIndicatorRef = useRef<HTMLDivElement | null>(null);
+  const isPulling = useRef(false);
+  const swipeStartX = useRef<Map<string, number>>(new Map());
+  const swipeRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const fetchInbox = useCallback(
-    async (p = page, s = search, f = filter, isRefresh = false) => {
-      if (!isRefresh) setLoading(true);
-      else setRefreshing(true);
+    async (p: number, s: string, f: string, append = false) => {
+      if (!append) setLoading(true);
+      else setLoadingMore(true);
       try {
         const [inbox, st] = await Promise.all([
-          api.inbox({ page: p, limit: 20, search: s, filter: f }),
-          api.inboxStats(),
+          api.inbox({ page: p, limit: PAGE_SIZE, search: s, filter: f }),
+          !append ? api.inboxStats() : Promise.resolve(null),
         ]);
-        setMails(inbox.mails);
-        setTotalPages(inbox.totalPages);
-        setTotal(inbox.total);
-        setStats(st);
+        if (append) {
+          setMails((prev) => [...prev, ...inbox.mails]);
+        } else {
+          setMails(inbox.mails);
+        }
+        if (st) setStats(st);
+        setHasMore(p + 1 < inbox.totalPages);
+        setPage(p);
       } catch {
         // handled
       } finally {
         setLoading(false);
-        setRefreshing(false);
+        setLoadingMore(false);
       }
     },
-    [page, search, filter]
+    []
   );
 
   useEffect(() => {
-    fetchInbox(page, search, filter);
-  }, [page, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+    fetchInbox(0, search, filter);
+  }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore && !loading) {
+          fetchInbox(page + 1, search, filter, true);
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, page, search, filter, fetchInbox]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const [inbox, st] = await Promise.all([
+        api.inbox({ page: 0, limit: PAGE_SIZE, search, filter }),
+        api.inboxStats(),
+      ]);
+      setMails(inbox.mails);
+      setStats(st);
+      setHasMore(inbox.totalPages > 1);
+      setPage(0);
+    } catch {
+      // handled
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl || scrollEl.scrollTop > 5) return;
+    pullStartY.current = e.touches[0].clientY;
+    isPulling.current = true;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPulling.current) return;
+    const delta = e.touches[0].clientY - pullStartY.current;
+    pullDelta.current = delta;
+    if (delta > 0 && delta < 120 && pullIndicatorRef.current) {
+      const progress = Math.min(delta / 80, 1);
+      pullIndicatorRef.current.style.height = `${delta * 0.5}px`;
+      pullIndicatorRef.current.style.opacity = String(progress);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isPulling.current) return;
+    isPulling.current = false;
+    if (pullIndicatorRef.current) {
+      pullIndicatorRef.current.style.height = "0px";
+      pullIndicatorRef.current.style.opacity = "0";
+    }
+    if (pullDelta.current > 80) {
+      handleRefresh();
+    }
+    pullDelta.current = 0;
+  };
 
   const handleSearch = (val: string) => {
     setSearch(val);
@@ -92,6 +170,58 @@ export default function InboxPage() {
       setMails((prev) =>
         prev.map((m) => (m.id === mail.id ? { ...m, starred: !newVal } : m))
       );
+    }
+  };
+
+  const handleSwipeStart = (mailId: string, clientX: number) => {
+    swipeStartX.current.set(mailId, clientX);
+  };
+
+  const handleSwipeMove = (mailId: string, clientX: number) => {
+    const startX = swipeStartX.current.get(mailId);
+    if (startX === undefined) return;
+    const delta = clientX - startX;
+    const el = swipeRefs.current.get(mailId);
+    if (!el) return;
+    if (delta < -10) {
+      const translateX = Math.max(delta, -100);
+      el.style.transform = `translateX(${translateX}px)`;
+      el.style.transition = "none";
+    }
+  };
+
+  const handleSwipeEnd = async (mailId: string, clientX: number) => {
+    const startX = swipeStartX.current.get(mailId);
+    swipeStartX.current.delete(mailId);
+    if (startX === undefined) return;
+    const delta = clientX - startX;
+    const el = swipeRefs.current.get(mailId);
+    if (el) {
+      el.style.transform = "";
+      el.style.transition = "transform 0.2s ease";
+    }
+    if (delta < -60) {
+      setMails((prev) => prev.filter((m) => m.id !== mailId));
+      try {
+        await api.patchMail(mailId, { deleted: true });
+      } catch {
+        fetchInbox(0, search, filter);
+      }
+    }
+  };
+
+  const handleSwipeAction = async (mailId: string, action: "delete" | "read") => {
+    if (action === "delete") {
+      setMails((prev) => prev.filter((m) => m.id !== mailId));
+      await api.patchMail(mailId, { deleted: true });
+    } else {
+      const mail = mails.find((m) => m.id === mailId);
+      if (!mail) return;
+      const newRead = !mail.read;
+      setMails((prev) =>
+        prev.map((m) => (m.id === mailId ? { ...m, read: newRead } : m))
+      );
+      await api.patchMail(mailId, { read: newRead });
     }
   };
 
@@ -138,7 +268,7 @@ export default function InboxPage() {
             variant="ghost"
             size="icon"
             className="h-9 w-9 shrink-0"
-            onClick={() => fetchInbox(page, search, filter, true)}
+            onClick={handleRefresh}
             disabled={refreshing}
           >
             <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
@@ -155,7 +285,21 @@ export default function InboxPage() {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div
+          ref={pullIndicatorRef}
+          className="flex items-center justify-center overflow-hidden"
+          style={{ height: 0, opacity: 0, transition: "height 0.2s, opacity 0.2s" }}
+        >
+          <RefreshCw className="h-5 w-5 text-primary animate-spin" />
+        </div>
+
         {loading ? (
           <div className="divide-y">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -194,95 +338,118 @@ export default function InboxPage() {
               const colorClass = avatarColor(mail.from);
 
               return (
-                <button
-                  key={mail.id}
-                  onClick={() => navigate(`/mail/${encodeURIComponent(mail.id)}`)}
-                  className={cn(
-                    "w-full flex items-start gap-3 p-3 sm:p-4 text-left transition-colors hover:bg-accent/50",
-                    !mail.read && "bg-primary/[0.03]"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "h-10 w-10 rounded-full flex items-center justify-center text-white text-xs font-medium shrink-0",
-                      colorClass
-                    )}
-                  >
-                    {initials}
+                <div key={mail.id} className="relative overflow-hidden group">
+                  <div className="absolute inset-y-0 right-0 w-24 flex items-center justify-center bg-destructive text-destructive-foreground z-0 md:hidden">
+                    <Trash2 className="h-5 w-5" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={cn(
-                          "text-sm truncate",
-                          !mail.read ? "font-semibold" : "font-normal text-muted-foreground"
-                        )}
-                      >
-                        {senderName}
-                      </span>
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {formatDate(mail.receivedAt)}
-                      </span>
-                    </div>
-                    <p
+
+                  <div
+                    ref={(el) => {
+                      if (el) swipeRefs.current.set(mail.id, el);
+                    }}
+                    onTouchStart={(e) => handleSwipeStart(mail.id, e.touches[0].clientX)}
+                    onTouchMove={(e) => handleSwipeMove(mail.id, e.touches[0].clientX)}
+                    onTouchEnd={(e) =>
+                      handleSwipeEnd(mail.id, e.changedTouches[0].clientX)
+                    }
+                    className="relative z-10 bg-background"
+                  >
+                    <button
+                      onClick={() => navigate(`/mail/${encodeURIComponent(mail.id)}`)}
                       className={cn(
-                        "text-sm truncate",
-                        !mail.read ? "font-medium" : "text-muted-foreground"
+                        "w-full flex items-start gap-3 p-3 sm:p-4 text-left transition-colors hover:bg-accent/50",
+                        !mail.read && "bg-primary/[0.03]"
                       )}
                     >
-                      {mail.subject || "(No Subject)"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
-                      {mail.snippet}
-                    </p>
+                      <div
+                        className={cn(
+                          "h-10 w-10 rounded-full flex items-center justify-center text-white text-xs font-medium shrink-0",
+                          colorClass
+                        )}
+                      >
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className={cn(
+                              "text-sm truncate",
+                              !mail.read
+                                ? "font-semibold"
+                                : "font-normal text-muted-foreground"
+                            )}
+                          >
+                            {senderName}
+                          </span>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {formatDate(mail.receivedAt)}
+                          </span>
+                        </div>
+                        <p
+                          className={cn(
+                            "text-sm truncate",
+                            !mail.read ? "font-medium" : "text-muted-foreground"
+                          )}
+                        >
+                          {mail.subject || "(No Subject)"}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {mail.snippet}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
+                        <button
+                          onClick={(e) => handleStarToggle(e, mail)}
+                          className="p-1 -m-1 rounded hover:bg-accent transition-colors"
+                        >
+                          <Star
+                            className={cn(
+                              "h-4 w-4",
+                              mail.starred
+                                ? "fill-amber-400 text-amber-400"
+                                : "text-muted-foreground/40"
+                            )}
+                          />
+                        </button>
+                        <div className="hidden group-hover:flex gap-0.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSwipeAction(mail.id, "read");
+                            }}
+                            className="p-1 rounded hover:bg-accent"
+                            title={mail.read ? "Mark unread" : "Mark read"}
+                          >
+                            <MailCheck className="h-3.5 w-3.5 text-muted-foreground" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSwipeAction(mail.id, "delete");
+                            }}
+                            className="p-1 rounded hover:bg-accent"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          </button>
+                        </div>
+                      </div>
+                    </button>
                   </div>
-                  <button
-                    onClick={(e) => handleStarToggle(e, mail)}
-                    className="mt-1 shrink-0 p-1 -m-1 rounded hover:bg-accent transition-colors"
-                  >
-                    <Star
-                      className={cn(
-                        "h-4 w-4",
-                        mail.starred
-                          ? "fill-amber-400 text-amber-400"
-                          : "text-muted-foreground/40"
-                      )}
-                    />
-                  </button>
-                </button>
+                </div>
               );
             })}
+
+            <div ref={sentinelRef} className="h-1" />
+
+            {loadingMore && (
+              <div className="flex items-center justify-center py-4">
+                <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
           </div>
         )}
       </div>
-
-      {totalPages > 1 && (
-        <div className="sticky bottom-0 bg-background/80 backdrop-blur-sm border-t px-4 py-2 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
-            Page {page + 1} of {totalPages} ({total} emails)
-          </span>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage(page + 1)}
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

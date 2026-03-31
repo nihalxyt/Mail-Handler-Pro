@@ -1,12 +1,16 @@
 import { type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth-context";
+import { useTheme } from "@/contexts/theme-context";
 import { cn } from "@/lib/utils";
 import {
   Inbox,
   Settings,
   ChevronDown,
   Mail,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,9 +30,14 @@ const NAV_ITEMS = [
 export default function AppLayout({ children }: { children: ReactNode }) {
   const [location, navigate] = useLocation();
   const { user, switchAccount } = useAuth();
+  const { theme, setTheme } = useTheme();
 
   const isMailDetail = location.startsWith("/mail/");
   const activePath = isMailDetail ? "/" : location;
+
+  const themeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
+  const ThemeIcon = themeIcon;
+  const nextTheme = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -41,6 +50,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         </div>
 
         <div className="flex-1" />
+
+        <button
+          onClick={() => setTheme(nextTheme)}
+          className="p-2 rounded-lg hover:bg-accent transition-colors"
+          title={`Theme: ${theme}`}
+        >
+          <ThemeIcon className="h-4 w-4 text-muted-foreground" />
+        </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors max-w-[200px] sm:max-w-[280px]">
