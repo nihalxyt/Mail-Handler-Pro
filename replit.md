@@ -22,7 +22,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 artifacts-monorepo/
 ├── artifacts/              # Deployable applications
 │   ├── api-server/         # Express API server (with MongoDB email API)
-│   └── web-mail/           # React+Vite web email client (Tailwind, wouter, shadcn/ui)
+│   └── web-mail/           # React+Vite web email client (Tailwind, React Router, shadcn/ui)
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
@@ -106,15 +106,15 @@ Utility scripts package. Run scripts via `pnpm --filter @workspace/scripts run <
 
 ### `artifacts/web-mail` (`@workspace/web-mail`)
 
-React+Vite web email client with Tailwind CSS, shadcn/ui components, and wouter routing. Provides a polished inbox UI for email aliases managed by the Telegram bot.
+React+Vite web email client with Tailwind CSS, shadcn/ui components, and React Router. Provides a polished inbox UI for email aliases managed by the Telegram bot.
 
-- Pages: Login, Inbox (paginated, search, filter), Mail Detail (safe HTML rendering via sandboxed iframe), Settings (password change, theme toggle)
+- Pages: Login, Inbox (paginated, search, filter), Mail Detail (safe HTML rendering via sandboxed iframe with hardened DOMPurify — remote images blocked, style/class stripped, link protocols restricted), Settings (password change, theme toggle)
 - Auth: Cookie-based sessions via `/api/auth/*` endpoints (httpOnly JWT cookies)
 - Account switching: Header dropdown to switch between user's email aliases
 - Theme: Light/dark/system with CSS custom properties
 - API proxy: Vite dev server proxies `/api` to api-server on port 8080
-- Responsive: Desktop sidebar + mobile bottom nav layout
-- Dependencies: wouter, lucide-react, @tanstack/react-query (available but using direct fetch), shadcn/ui components
+- Responsive: Collapsible desktop sidebar (localStorage-persisted) + mobile bottom nav layout
+- Dependencies: react-router-dom, dompurify, lucide-react, shadcn/ui components (button, badge, card, dropdown-menu, input, label, separator, skeleton, tooltip)
 
 ## MasterMailBot (`master_bot.py`)
 
