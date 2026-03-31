@@ -34,7 +34,8 @@ sudo apt install -y nginx
 npm install -g pm2
 
 # Certbot (free SSL certificate)
-sudo apt install -y certbot python3-certbot-nginx
+# certbot দরকার নেই — Cloudflare Tunnel HTTPS handle করবে
+# sudo apt install -y certbot python3-certbot-nginx
 ```
 
 ---
@@ -146,7 +147,14 @@ module.exports = {
 ```
 
 ```bash
-# সব সার্ভিস চালু করুন
+# ===== Python Dependencies (Telegram Bot) =====
+cd /home/your-user/mailbot
+pip3 install -r requirements.txt
+
+# যদি permission error আসে:
+pip3 install --user -r requirements.txt
+
+# ===== সব সার্ভিস চালু করুন =====
 cd /home/your-user/mailbot
 pm2 start ecosystem.config.cjs
 

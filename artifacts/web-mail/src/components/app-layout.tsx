@@ -57,9 +57,13 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const isAdminPage = location.pathname.startsWith("/admin");
   const activePath = isMailDetail ? "/" : isAdminPage ? "/admin" : location.pathname;
 
-  const themeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
-  const ThemeIcon = themeIcon;
-  const nextTheme = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
+  const themes = [
+    { value: "light" as const, label: "Light", icon: Sun },
+    { value: "dark" as const, label: "Dark", icon: Moon },
+    { value: "system" as const, label: "System", icon: Monitor },
+  ];
+  const currentTheme = themes.find((t) => t.value === theme) || themes[2];
+  const CurrentIcon = currentTheme.icon;
 
   const toggleSidebar = () => {
     const next = !sidebarCollapsed;
@@ -109,17 +113,29 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
           <div className="flex-1" />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setTheme(nextTheme)}
-                className="p-2 rounded-lg hover:bg-accent transition-colors"
-              >
-                <ThemeIcon className="h-4 w-4 text-muted-foreground" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-accent transition-colors" title={`Theme: ${currentTheme.label}`}>
+                <CurrentIcon className="h-4 w-4 text-muted-foreground" />
+                <span className="text-[11px] text-muted-foreground hidden sm:inline">{currentTheme.label}</span>
               </button>
-            </TooltipTrigger>
-            <TooltipContent>Theme: {theme}</TooltipContent>
-          </Tooltip>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel className="text-xs">Theme</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {themes.map(({ value, label, icon: Icon }) => (
+                <DropdownMenuItem
+                  key={value}
+                  onClick={() => setTheme(value)}
+                  className={cn("gap-2", theme === value && "bg-accent font-medium")}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                  {theme === value && <Check className="h-3.5 w-3.5 ml-auto text-primary" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors max-w-[200px] sm:max-w-[280px]">
@@ -260,22 +276,25 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <main className="flex-1 overflow-hidden flex flex-col">{children}</main>
         </div>
 
-        <nav className="md:hidden sticky bottom-0 z-20 bg-card/80 glass border-t flex items-center h-14 shrink-0">
-          {navItems.map(({ path, label, icon: Icon }) => (
-            <button
-              key={path}
-              onClick={() => navigate(path)}
-              className={cn(
-                "flex-1 flex flex-col items-center justify-center gap-0.5 py-1 transition-colors",
-                activePath === path
-                  ? "text-primary"
-                  : "text-muted-foreground"
-              )}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="text-[10px] font-medium">{label}</span>
-            </button>
-          ))}
+        <nav className="md:hidden sticky bottom-0 z-20 bg-card/80 glass border-t shrink-0">
+          <div className="flex items-center h-14">
+            {navItems.map(({ path, label, icon: Icon }) => (
+              <button
+                key={path}
+                onClick={() => navigate(path)}
+                className={cn(
+                  "flex-1 flex flex-col items-center justify-center gap-0.5 py-1 transition-colors",
+                  activePath === path
+                    ? "text-primary"
+                    : "text-muted-foreground"
+                )}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-[10px] font-medium">{label}</span>
+              </button>
+            ))}
+          </div>
+          <DevFooter variant="inline" className="pb-2 -mt-1" />
         </nav>
       </div>
     </TooltipProvider>

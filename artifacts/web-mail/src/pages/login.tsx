@@ -4,8 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTheme } from "@/contexts/theme-context";
-import { Mail, Eye, EyeOff, Sun, Moon, Monitor, ArrowRight, Lock } from "lucide-react";
+import { Mail, Eye, EyeOff, Sun, Moon, Monitor, ArrowRight, Lock, AlertCircle } from "lucide-react";
 import DevFooter from "@/components/dev-footer";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -18,21 +24,51 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) return;
+    if (!email.trim()) {
+      setError("Please enter your email address");
+      return;
+    }
+    if (!password.trim()) {
+      setError("Please enter your password");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
       await login(email.trim(), password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      if (err && typeof err === "object" && "status" in err) {
+        const status = (err as { status: number }).status;
+        const msg = (err as Error).message || "";
+        if (status === 401) {
+          setError("Invalid email or password. Please try again.");
+        } else if (status === 400) {
+          setError(msg || "Please check your input and try again.");
+        } else if (status === 429) {
+          setError("Too many attempts. Please wait and try again.");
+        } else if (status >= 500) {
+          setError("Server error. Please try again later.");
+        } else {
+          setError(msg || "Login failed. Please try again.");
+        }
+      } else if (err instanceof TypeError) {
+        setError("Cannot connect to server. Please check your connection.");
+      } else {
+        setError("Login failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const themeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
-  const ThemeIcon = themeIcon;
-  const nextTheme = theme === "light" ? "dark" : theme === "dark" ? "system" : "light";
+  const themes = [
+    { value: "light" as const, label: "Light", icon: Sun },
+    { value: "dark" as const, label: "Dark", icon: Moon },
+    { value: "system" as const, label: "System", icon: Monitor },
+  ];
+
+  const currentTheme = themes.find((t) => t.value === theme) || themes[2];
+  const CurrentIcon = currentTheme.icon;
 
   return (
     <div className="min-h-screen flex flex-col bg-background relative overflow-hidden">
@@ -46,13 +82,27 @@ export default function LoginPage() {
           </div>
           <span className="font-bold text-base tracking-tight">ZayMail</span>
         </div>
-        <button
-          onClick={() => setTheme(nextTheme)}
-          className="p-2.5 rounded-xl hover:bg-accent transition-all duration-200"
-          title={`Theme: ${theme}`}
-        >
-          <ThemeIcon className="h-[18px] w-[18px] text-muted-foreground" />
-        </button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-accent border border-transparent hover:border-border/50 transition-all duration-200">
+              <CurrentIcon className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground hidden sm:inline">{currentTheme.label}</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {themes.map(({ value, label, icon: Icon }) => (
+              <DropdownMenuItem
+                key={value}
+                onClick={() => setTheme(value)}
+                className={theme === value ? "bg-accent font-medium" : ""}
+              >
+                <Icon className="h-4 w-4 mr-2" />
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <div className="flex-1 flex items-center justify-center px-4 relative z-10">
@@ -67,9 +117,9 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="flex items-center gap-3 p-3.5 text-sm bg-destructive/10 text-destructive rounded-xl border border-destructive/20">
-                <div className="w-2 h-2 rounded-full bg-destructive shrink-0" />
-                <span>{error}</span>
+              <div className="flex items-start gap-3 p-4 text-sm bg-destructive/10 text-destructive rounded-xl border border-destructive/20 animate-in fade-in slide-in-from-top-1 duration-300">
+                <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span className="leading-snug">{error}</span>
               </div>
             )}
 
@@ -82,7 +132,7 @@ export default function LoginPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); setError(""); }}
                   autoComplete="email"
                   required
                   autoFocus
@@ -100,7 +150,7 @@ export default function LoginPage() {
                   type={showPassword ? "text" : "password"}
                   placeholder="Your web password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => { setPassword(e.target.value); setError(""); }}
                   autoComplete="current-password"
                   required
                   className="h-12 pl-10 pr-11 rounded-xl bg-card border-border/60 focus:border-primary/50 transition-colors"
