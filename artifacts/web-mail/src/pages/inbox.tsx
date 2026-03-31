@@ -40,6 +40,7 @@ export default function InboxPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [search, setSearch] = useState("");
@@ -58,6 +59,7 @@ export default function InboxPage() {
     async (p: number, s: string, f: string, append = false) => {
       if (!append) setLoading(true);
       else setLoadingMore(true);
+      setError(null);
       try {
         const [inbox, st] = await Promise.all([
           api.inbox({ page: p, limit: PAGE_SIZE, search: s, filter: f }),
@@ -71,8 +73,9 @@ export default function InboxPage() {
         if (st) setStats(st);
         setHasMore(p + 1 < inbox.totalPages);
         setPage(p);
-      } catch {
-        // handled
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to load inbox";
+        if (!append) setError(msg);
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -111,8 +114,9 @@ export default function InboxPage() {
       setStats(st);
       setHasMore(inbox.totalPages > 1);
       setPage(0);
-    } catch {
-      // handled
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh");
     } finally {
       setRefreshing(false);
     }
@@ -300,7 +304,24 @@ export default function InboxPage() {
           <RefreshCw className="h-5 w-5 text-primary animate-spin" />
         </div>
 
-        {loading ? (
+        {error && !loading ? (
+          <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <InboxIcon className="h-8 w-8 text-destructive" />
+            </div>
+            <h3 className="text-lg font-medium mb-1">Something went wrong</h3>
+            <p className="text-sm text-muted-foreground max-w-xs mb-4">{error}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchInbox(0, search, filter)}
+              className="gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Try again
+            </Button>
+          </div>
+        ) : loading ? (
           <div className="divide-y">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex items-start gap-3 p-3 sm:p-4">
