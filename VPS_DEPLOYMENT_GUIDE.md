@@ -99,9 +99,9 @@ BOT2_API_HASH=your-bot2-api-hash
 BOT2_BOT_TOKEN=your-bot2-token
 SUPER_ADMIN_IDS=123456789,987654321
 
-# SMTP
-SMTP_HOST=0.0.0.0
-SMTP_PORT=25
+# SMTP (দরকার নেই যদি Cloudflare Email Worker ব্যবহার করেন)
+# SMTP_HOST=0.0.0.0
+# SMTP_PORT=25
 ```
 
 ---
@@ -344,6 +344,6 @@ pm2 stop all                # সব বন্ধ
 | Site লোড হচ্ছে না | `pm2 status` চেক করুন, `sudo nginx -t` চালান |
 | API error | `pm2 logs api-server` দেখুন |
 | MongoDB connect fail | `.env` এ URI ঠিক আছে কিনা চেক করুন |
-| Port 25 blocked | VPS provider কে বলুন port 25 unblock করতে (SMTP এর জন্য) |
 | Bot চলছে না | `pm2 logs telegram-bot` দেখুন, session files চেক করুন |
-| SSL error | `sudo certbot renew` চালান |
+| Tunnel কাজ করছে না | `pm2 logs cloudflare-tunnel` দেখুন, `cloudflared tunnel info zaymail` চালান |
+| Email আসছে না | Cloudflare Dashboard → Email Routing চেক করুন, Worker logs দেখুন |
