@@ -8,6 +8,8 @@ import hashlib
 import html as html_lib
 import email
 import logging
+import secrets
+import string
 from datetime import datetime, timedelta, timezone
 from email.header import decode_header
 from email.utils import getaddresses
@@ -30,6 +32,12 @@ try:
     AIOSMTPD_AVAILABLE = True
 except ImportError:
     AIOSMTPD_AVAILABLE = False
+
+try:
+    import bcrypt as _bcrypt
+    _BCRYPT_AVAILABLE = True
+except ImportError:
+    _BCRYPT_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("MasterMailBot")
@@ -311,6 +319,20 @@ def short(s, n=50):
 
 def sha256(s):
     return hashlib.sha256(s.encode("utf-8", errors="ignore")).hexdigest()
+
+def generate_web_password(length=12):
+    alphabet = string.ascii_letters + string.digits + "!@#$%"
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+def hash_password(password):
+    if _BCRYPT_AVAILABLE:
+        return _bcrypt.hashpw(password.encode('utf-8'), _bcrypt.gensalt(12)).decode('utf-8')
+    logger.warning("bcrypt not available — using passlib bcrypt fallback")
+    try:
+        from passlib.hash import bcrypt as _passlib_bcrypt
+        return _passlib_bcrypt.using(rounds=12).hash(password)
+    except ImportError:
+        raise RuntimeError("bcrypt or passlib is required for password hashing. Install with: pip install bcrypt")
 
 def cb(*parts):
     data = "|".join(str(p) for p in parts)
@@ -598,8 +620,9 @@ def user_main_kb():
          Button.inline("📧 My Emails", cb("M", "emails"))],
         [Button.inline("⭐ Starred", cb("M", "starred", "0")),
          Button.inline("📊 Statistics", cb("M", "stats"))],
-        [Button.inline("⚙️ Settings", cb("M", "settings")),
-         Button.inline("ℹ️ Help", cb("M", "help"))],
+        [Button.inline("🔑 Web Password", cb("M", "webpass")),
+         Button.inline("⚙️ Settings", cb("M", "settings"))],
+        [Button.inline("ℹ️ Help", cb("M", "help"))],
     ]
 
 def user_reply_kb():
@@ -850,6 +873,87 @@ async def show_user_help(event, edit=False):
     if edit:
         return await event.edit(help_text, buttons=[[Button.inline("⬅️ Back", cb("M", "back"))]])
     return await event.respond(help_text, buttons=[[Button.inline("⬅️ Back", cb("M", "back"))]])
+
+async def show_web_passwords(event, col_aliases, edit=False):
+    tg_user_id = event.sender_id
+    now = now_utc()
+    aliases = await col_aliases.find({"tg_user_id": tg_user_id, "active": True}).to_list(50)
+    if not aliases:
+        text = (
+            "🔑 **Web Login Passwords**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            "You have no active email aliases.\n"
+            "Ask an admin to assign you one first."
+        )
+        btns = [[Button.inline("⬅️ Back", cb("M", "back"))]]
+        if edit:
+            return await event.edit(text, buttons=btns)
+        return await event.respond(text, buttons=btns)
+
+    lines = ["🔑 **Web Login Passwords**\n━━━━━━━━━━━━━━━━━━━━\n"]
+    btns = []
+    for a in aliases:
+        em = a["alias_email"]
+        has_pw = "✅" if a.get("password") else "❌"
+        exp = a.get("expires_at")
+        expired = exp and make_aware(exp) < now
+        status = "🔴 Expired" if expired else "🟢 Active"
+        lines.append(f"\n📧 `{em}`\n   {status} | Password: {has_pw}")
+        token = sha256(em)[:12]
+        if not expired:
+            btns.append([
+                Button.inline(f"🔄 Reset: {short(em, 25)}", cb("WP", "reset", token)),
+                Button.inline(f"👁️ View: {short(em, 25)}", cb("WP", "view", token))
+            ])
+
+    lines.append("\n\n💡 Use these credentials to log into the web inbox.")
+    btns.append([Button.inline("⬅️ Back", cb("M", "back"))])
+    text = "\n".join(lines)
+    if edit:
+        return await event.edit(text, buttons=btns)
+    return await event.respond(text, buttons=btns)
+
+
+async def handle_web_password_callback(event, parts, col_aliases, alias_token_cache):
+    action = parts[1] if len(parts) > 1 else ""
+    token = parts[2] if len(parts) > 2 else ""
+
+    alias_email = alias_token_cache.get(token)
+    if not alias_email:
+        return await event.answer("❌ Alias not found. Try refreshing.", alert=True)
+
+    alias = await col_aliases.find_one({"alias_email": alias_email, "tg_user_id": event.sender_id})
+    if not alias:
+        return await event.answer("❌ This alias doesn't belong to you.", alert=True)
+
+    if action == "view":
+        if alias.get("password"):
+            return await event.answer(
+                f"🔑 Email: {alias_email}\n\nPassword is set. Use 'Reset' to generate a new one.\n\n"
+                "For security, stored passwords cannot be viewed.\nReset to get a new one.",
+                alert=True
+            )
+        else:
+            return await event.answer("❌ No password set yet. Use 'Reset' to generate one.", alert=True)
+
+    elif action == "reset":
+        new_password = generate_web_password(12)
+        hashed = hash_password(new_password)
+        await col_aliases.update_one(
+            {"alias_email": alias_email},
+            {"$set": {"password": hashed, "updated_at": now_utc()}}
+        )
+        await event.edit(
+            f"🔑 **Password Reset!**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📧 Email: `{alias_email}`\n"
+            f"🔑 New Password: `{new_password}`\n\n"
+            "⚠️ **Save this password!** It won't be shown again.\n"
+            "Use it to log into the web inbox.",
+            buttons=[
+                [Button.inline("🔑 All Passwords", cb("M", "webpass"))],
+                [Button.inline("⬅️ Back", cb("M", "back"))]
+            ]
+        )
+
 
 async def show_admin_inbox(event, col_logs, super_admin_ids, page=0, edit=False):
     admin_ids = list(super_admin_ids)
@@ -1207,6 +1311,9 @@ async def finalize_add_email(admin_tg_id, event, days, bot_instance, col_aliases
             buttons=[[Button.inline("⬅️ Back", cb("A", "aliases"))]]
         )
 
+    web_password = generate_web_password(12)
+    hashed_pw = hash_password(web_password)
+
     await col_aliases.update_one(
         {"alias_email": alias_email},
         {"$set": {
@@ -1217,7 +1324,8 @@ async def finalize_add_email(admin_tg_id, event, days, bot_instance, col_aliases
             "created_at": now_utc(),
             "updated_at": now_utc(),
             "expires_at": expires_at,
-            "created_by": admin_tg_id
+            "created_by": admin_tg_id,
+            "password": hashed_pw
         }},
         upsert=True
     )
@@ -1238,8 +1346,13 @@ async def finalize_add_email(admin_tg_id, event, days, bot_instance, col_aliases
             f"📧 Email: `{alias_email}`\n"
             f"⏰ Expires: {format_datetime(expires_at)}\n"
             f"⏳ Duration: {days} days\n\n"
-            "You'll receive mails sent to this address.",
-            buttons=[[Button.inline("📧 View My Emails", cb("M", "emails"))]]
+            f"🔑 **Web Login Password:** `{web_password}`\n\n"
+            "You can use this password to log into the web inbox.\n"
+            "You'll also receive mails sent to this address.",
+            buttons=[
+                [Button.inline("📧 View My Emails", cb("M", "emails"))],
+                [Button.inline("🔑 Web Password", cb("M", "webpass"))]
+            ]
         )
     except Exception:
         pass
@@ -1831,6 +1944,8 @@ def make_callback_handler(
                 return await show_user_emails(event, col_aliases, col_logs, edit=True)
             elif action == "stats":
                 return await show_user_stats(event, col_users, col_aliases, col_logs, user_cache, edit=True)
+            elif action == "webpass":
+                return await show_web_passwords(event, col_aliases, edit=True)
             elif action == "settings":
                 return await show_user_settings(event, col_users, user_cache, edit=True)
             elif action == "help":
@@ -1839,6 +1954,9 @@ def make_callback_handler(
                 page = int(parts[2]) if len(parts) > 2 else 0
                 return await show_starred(event, col_logs, page=page, edit=True)
             return
+
+        if parts[0] == "WP":
+            return await handle_web_password_callback(event, parts, col_aliases, alias_token_cache_dict)
 
         if parts[0] == "MI":
             return await show_inbox(event, col_logs, page=int(parts[1]) if len(parts) > 1 else 0, edit=True)

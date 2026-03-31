@@ -11,7 +11,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
 - **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
+- **Database**: PostgreSQL + Drizzle ORM (original); MongoDB (email bot system)
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
@@ -21,18 +21,21 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ```text
 artifacts-monorepo/
 ├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
+│   └── api-server/         # Express API server (with MongoDB email API)
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
 │   └── db/                 # Drizzle ORM schema + DB connection
 ├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+│   └── src/                # Individual .ts scripts
+├── master_bot.py           # Dual Telegram email bot with SMTP + web password management
+├── cloudflare_email_worker.js  # Cloudflare Email Worker for edge email reception
+├── cloudflare_wrangler.toml    # Wrangler config for CF worker deployment
+├── pnpm-workspace.yaml
+├── tsconfig.base.json
+├── tsconfig.json
+└── package.json
 ```
 
 ## TypeScript & Composite Projects
@@ -52,15 +55,28 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 
 ### `artifacts/api-server` (`@workspace/api-server`)
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+Express 5 API server with MongoDB-backed email inbox API. Routes live in `src/routes/` and use JWT auth with httpOnly cookies.
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
+- Entry: `src/index.ts` — reads `PORT`, connects MongoDB, starts Express
+- App setup: `src/app.ts` — mounts CORS (with credentials), cookie-parser, JSON/urlencoded parsing, routes at `/api`
+- MongoDB: `src/lib/mongo.ts` — connects to both Bot1 and Bot2 MongoDB databases
+- Auth: `src/middleware/auth.ts` — JWT middleware with httpOnly cookies
+- Routes:
+  - `src/routes/health.ts` — `GET /api/healthz`
+  - `src/routes/auth.ts` — `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/auth/switch`
+  - `src/routes/inbox.ts` — `GET /api/inbox` (paginated), `GET /api/inbox/stats`
+  - `src/routes/mail.ts` — `GET /api/mail/:id`, `PATCH /api/mail/:id`, `POST /api/mail/batch`
+  - `src/routes/aliases.ts` — `GET /api/aliases`, `PATCH /api/aliases/:email/password`
+  - `src/routes/incoming.ts` — `POST /api/incoming-mail` (Cloudflare worker endpoint, API key auth)
+- Dependencies: `mongodb`, `jsonwebtoken`, `bcryptjs`, `cookie-parser`
 - Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
+
+**Environment Variables (API server):**
+- `BOT1_MONGO_URI` — MongoDB connection string for Bot1
+- `BOT2_MONGO_URI` — MongoDB connection string for Bot2
+- `BOT1_DB_NAME` / `BOT2_DB_NAME` — Database names (default: `mailbot_pro`)
+- `JWT_SECRET` or `SESSION_SECRET` — Secret for JWT signing
+- `INCOMING_MAIL_API_KEY` — API key for Cloudflare worker incoming mail endpoint
 
 ### `lib/db` (`@workspace/db`)
 
@@ -68,32 +84,24 @@ Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client insta
 
 - `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
 - `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
 
 ### `lib/api-spec` (`@workspace/api-spec`)
 
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
-
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
+Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages.
 
 Run codegen: `pnpm --filter @workspace/api-spec run codegen`
 
 ### `lib/api-zod` (`@workspace/api-zod`)
 
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
+Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`).
 
 ### `lib/api-client-react` (`@workspace/api-client-react`)
 
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
+Generated React Query hooks and fetch client from the OpenAPI spec.
 
 ### `scripts` (`@workspace/scripts`)
 
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+Utility scripts package. Run scripts via `pnpm --filter @workspace/scripts run <script>`.
 
 ## MasterMailBot (`master_bot.py`)
 
@@ -102,17 +110,37 @@ Unified Python script running two Telegram email-forwarding bots simultaneously 
 ### Key Features
 - **Dual bot**: Both bots share identical functionality but use separate MongoDB databases, alias caches, and Telegram sessions
 - **SMTP server**: aiosmtpd replaces Gmail/IMAP polling; incoming emails route to the correct bot/user automatically
+- **Web password management**: Auto-generates bcrypt-hashed passwords on alias creation; users can view/reset passwords via "Web Password" button in user panel
 - **uvloop**: High-performance event loop (falls back to default asyncio if not installed)
 - **TTLCache**: In-memory LRU+TTL cache (OrderedDict-based) for users, counts, and aliases — minimizes MongoDB hits
 - **Cross-bot email uniqueness**: Same email address cannot be assigned in both bots simultaneously
-- **Admin fallback**: Unassigned/expired emails broadcast to ALL super admin IDs across both bots
-- **Background cache refresh**: Alias caches refresh every 30 seconds via asyncio task
+- **Admin fallback**: Unassigned emails route to Bot1 only, first admin only
 
 ### Dependencies
-`telethon`, `motor`, `aiosmtpd`, `python-dotenv`, `uvloop`
+`telethon`, `motor`, `aiosmtpd`, `python-dotenv`, `uvloop`, `bcrypt` (optional, falls back to sha256)
 
 ### Config
 - Bot credentials, MongoDB URIs, and super admin IDs are set via environment variables or hardcoded defaults
 - SMTP binds to `SMTP_HOST`/`SMTP_PORT` (default `0.0.0.0:25`)
 - Session files: `bot1_session`, `bot2_session`
 - Timezone: `Asia/Dhaka`
+
+### MongoDB Schema (per bot database)
+- **`users`**: `_id` (U{tg_id}), `tg_user_id`, `username`, `name`, `role`, `status`, `notifications`, `stats`, timestamps
+- **`aliases`**: `alias_email` (unique), `tg_user_id`, `user_id`, `active`, `expires_at`, `password` (bcrypt hash), timestamps
+- **`mail_logs`**: `_id` (SHA256 dedupe_key), `alias_email`, `tg_user_id`, `from`, `subject`, `body`, `snippet`, `read`, `starred`, `deleted`, `bot`, timestamps
+- **`settings`** and **`statistics`**: System configuration and aggregated data
+
+## Cloudflare Email Worker (`cloudflare_email_worker.js`)
+
+Cloudflare Workers script that receives emails via Cloudflare Email Routing and POSTs them to the API server's `/api/incoming-mail` endpoint.
+
+### Setup
+1. Deploy with Wrangler: `wrangler deploy` (uses `cloudflare_wrangler.toml`)
+2. Set secrets: `wrangler secret put INCOMING_MAIL_API_KEY`
+3. Configure Cloudflare Email Routing to route emails to this worker
+4. Set `API_ENDPOINT` to your API server URL
+
+### Config (`cloudflare_wrangler.toml`)
+- `API_ENDPOINT` — URL of the API server
+- `INCOMING_MAIL_API_KEY` — Secret for authenticating with the API

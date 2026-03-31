@@ -1,0 +1,13 @@
+name = "email-forwarder"
+main = "cloudflare_email_worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+API_ENDPOINT = "https://your-api-domain.com"
+
+# Set INCOMING_MAIL_API_KEY as a secret:
+# wrangler secret put INCOMING_MAIL_API_KEY
+
+# Email routing configuration
+# In Cloudflare dashboard: Email > Email Routing > Routes
+# Set catch-all to route to this worker
