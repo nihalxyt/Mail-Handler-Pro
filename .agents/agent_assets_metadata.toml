@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "96hU5kAwgfkb80YyFlgC4"
+uri = "file://VPS_DEPLOYMENT_GUIDE.md"
+type = "text"
+title = "VPS Deployment Guide (বাংলায়)"
