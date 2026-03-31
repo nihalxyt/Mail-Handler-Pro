@@ -21,7 +21,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ```text
 artifacts-monorepo/
 ├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server (with MongoDB email API)
+│   ├── api-server/         # Express API server (with MongoDB email API)
+│   └── web-mail/           # React+Vite web email client (Tailwind, wouter, shadcn/ui)
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
@@ -102,6 +103,18 @@ Generated React Query hooks and fetch client from the OpenAPI spec.
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Run scripts via `pnpm --filter @workspace/scripts run <script>`.
+
+### `artifacts/web-mail` (`@workspace/web-mail`)
+
+React+Vite web email client with Tailwind CSS, shadcn/ui components, and wouter routing. Provides a polished inbox UI for email aliases managed by the Telegram bot.
+
+- Pages: Login, Inbox (paginated, search, filter), Mail Detail (safe HTML rendering via sandboxed iframe), Settings (password change, theme toggle)
+- Auth: Cookie-based sessions via `/api/auth/*` endpoints (httpOnly JWT cookies)
+- Account switching: Header dropdown to switch between user's email aliases
+- Theme: Light/dark/system with CSS custom properties
+- API proxy: Vite dev server proxies `/api` to api-server on port 8080
+- Responsive: Desktop sidebar + mobile bottom nav layout
+- Dependencies: wouter, lucide-react, @tanstack/react-query (available but using direct fetch), shadcn/ui components
 
 ## MasterMailBot (`master_bot.py`)
 
