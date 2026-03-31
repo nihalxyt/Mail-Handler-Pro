@@ -14,11 +14,10 @@ import {
   Monitor,
   LogOut,
   Key,
-  CheckCircle,
-  AlertCircle,
   Eye,
   EyeOff,
 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -32,9 +31,7 @@ export default function SettingsPage() {
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [pwLoading, setPwLoading] = useState(false);
-  const [pwMessage, setPwMessage] = useState<{ type: "success" | "error"; text: string } | null>(
-    null
-  );
+  const [pwMessage, setPwMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
     api
@@ -61,6 +58,7 @@ export default function SettingsPage() {
     try {
       await api.changePassword(selectedAlias, currentPw, newPw);
       setPwMessage({ type: "success", text: "Password changed successfully!" });
+      toast.success("Password changed successfully");
       setCurrentPw("");
       setNewPw("");
       setConfirmPw("");
@@ -81,7 +79,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-6 overflow-y-auto h-full scrollbar-thin">
       <div>
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -168,11 +166,7 @@ export default function SettingsPage() {
                             : "bg-destructive/10 text-destructive border-destructive/20"
                         }`}
                       >
-                        {pwMessage.type === "success" ? (
-                          <CheckCircle className="h-4 w-4 shrink-0" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 shrink-0" />
-                        )}
+                        <div className={`h-4 w-4 rounded-full shrink-0 ${pwMessage.type === "success" ? "bg-emerald-500" : "bg-destructive"}`} />
                         {pwMessage.text}
                       </div>
                     )}

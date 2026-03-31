@@ -7,6 +7,7 @@ import {
   clearTokenCookie,
   authMiddleware,
 } from "../middleware/auth";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -19,6 +20,16 @@ router.post("/auth/login", async (req, res) => {
 
     if (!email || !password) {
       res.status(400).json({ error: "Email and password are required" });
+      return;
+    }
+
+    if (typeof email !== "string" || typeof password !== "string") {
+      res.status(400).json({ error: "Invalid input" });
+      return;
+    }
+
+    if (email.length > 320 || password.length > 128) {
+      res.status(400).json({ error: "Invalid input length" });
       return;
     }
 
@@ -64,6 +75,8 @@ router.post("/auth/login", async (req, res) => {
 
     const allAliases = await findAllAliasesByTgUser(alias.tg_user_id);
 
+    logger.info({ email: alias.alias_email }, "User logged in");
+
     res.json({
       success: true,
       user: {
@@ -79,7 +92,7 @@ router.post("/auth/login", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("Login error:", err);
+    logger.error({ err }, "Login error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -115,7 +128,7 @@ router.get("/auth/me", authMiddleware, async (req, res) => {
       })),
     });
   } catch (err) {
-    console.error("Me error:", err);
+    logger.error({ err }, "Me error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -123,7 +136,7 @@ router.get("/auth/me", authMiddleware, async (req, res) => {
 router.post("/auth/switch", authMiddleware, async (req, res) => {
   try {
     const { email } = req.body as { email?: string };
-    if (!email) {
+    if (!email || typeof email !== "string") {
       res.status(400).json({ error: "Email is required" });
       return;
     }
@@ -139,6 +152,17 @@ router.post("/auth/switch", authMiddleware, async (req, res) => {
       return;
     }
 
+    if (!result.alias.active) {
+      res.status(403).json({ error: "This email alias is deactivated" });
+      return;
+    }
+
+    const now = new Date();
+    if (result.alias.expires_at && new Date(result.alias.expires_at) < now) {
+      res.status(403).json({ error: "This email alias has expired" });
+      return;
+    }
+
     const token = signToken({
       aliasEmail: result.alias.alias_email,
       tgUserId: result.alias.tg_user_id,
@@ -147,13 +171,15 @@ router.post("/auth/switch", authMiddleware, async (req, res) => {
 
     setTokenCookie(res, token);
 
+    logger.info({ from: req.user!.aliasEmail, to: result.alias.alias_email }, "Account switched");
+
     res.json({
       success: true,
       email: result.alias.alias_email,
       dbKey: result.dbKey,
     });
   } catch (err) {
-    console.error("Switch error:", err);
+    logger.error({ err }, "Switch error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

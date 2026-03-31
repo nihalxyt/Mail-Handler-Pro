@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 import {
   Inbox,
   Settings,
@@ -13,6 +14,8 @@ import {
   Monitor,
   PanelLeftClose,
   PanelLeft,
+  Shield,
+  LogOut,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,14 +36,24 @@ const NAV_ITEMS = [
 export default function AppLayout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, switchAccount } = useAuth();
+  const { user, switchAccount, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     return localStorage.getItem("sidebar-collapsed") === "true";
   });
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (user?.role && ["admin", "moderator", "super_admin"].includes(user.role)) {
+      setIsAdmin(true);
+    } else {
+      api.adminCheck().then(() => setIsAdmin(true)).catch(() => setIsAdmin(false));
+    }
+  }, [user]);
 
   const isMailDetail = location.pathname.startsWith("/mail/");
-  const activePath = isMailDetail ? "/" : location.pathname;
+  const isAdminPage = location.pathname.startsWith("/admin");
+  const activePath = isMailDetail ? "/" : isAdminPage ? "/admin" : location.pathname;
 
   const themeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
   const ThemeIcon = themeIcon;
@@ -52,15 +65,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     localStorage.setItem("sidebar-collapsed", String(next));
   };
 
+  const navItems = [
+    ...NAV_ITEMS,
+    ...(isAdmin ? [{ path: "/admin", label: "Admin", icon: Shield }] as const : []),
+  ];
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex flex-col h-screen bg-background">
-        <header className="sticky top-0 z-20 bg-card/80 backdrop-blur-sm border-b px-3 sm:px-4 h-14 flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground">
+        <header className="sticky top-0 z-20 bg-card/80 glass border-b px-3 sm:px-4 h-14 flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground shadow-sm">
               <Mail className="h-4 w-4" />
             </div>
-            <span className="font-semibold text-sm hidden sm:block">MailBox</span>
+            <span className="font-semibold text-sm hidden sm:block tracking-tight">MailBox</span>
           </div>
 
           <button
@@ -77,24 +95,39 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
           <div className="flex-1" />
 
-          <button
-            onClick={() => setTheme(nextTheme)}
-            className="p-2 rounded-lg hover:bg-accent transition-colors"
-            title={`Theme: ${theme}`}
-          >
-            <ThemeIcon className="h-4 w-4 text-muted-foreground" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setTheme(nextTheme)}
+                className="p-2 rounded-lg hover:bg-accent transition-colors"
+              >
+                <ThemeIcon className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Theme: {theme}</TooltipContent>
+          </Tooltip>
 
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-accent transition-colors max-w-[200px] sm:max-w-[280px]">
-              <span className="text-sm font-medium truncate">{user?.email}</span>
+              <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold shrink-0">
+                {(user?.email || "?")[0].toUpperCase()}
+              </div>
+              <span className="text-sm font-medium truncate hidden sm:block">{user?.email}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-sm font-medium">{user?.email}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {user?.role && user.role !== "user" ? user.role.replace("_", " ") : "User"}
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
                 Switch account
               </DropdownMenuLabel>
-              <DropdownMenuSeparator />
               {user?.aliases.map((alias) => (
                 <DropdownMenuItem
                   key={alias.email}
@@ -106,20 +139,21 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                   className="flex items-center justify-between gap-2"
                 >
                   <span className="truncate text-sm">{alias.email}</span>
-                  <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0">
                     {alias.email === user.email && (
-                      <Badge variant="default" className="text-[10px] px-1.5 py-0">
-                        Active
-                      </Badge>
+                      <Badge variant="default" className="text-[10px] px-1.5 py-0">Active</Badge>
                     )}
                     {!alias.active && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        Disabled
-                      </Badge>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Disabled</Badge>
                     )}
                   </div>
                 </DropdownMenuItem>
               ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={logout} className="text-destructive">
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign out
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
@@ -128,10 +162,10 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <aside
             className={cn(
               "hidden md:flex border-r bg-sidebar shrink-0 flex-col p-2 gap-1 transition-all duration-200",
-              sidebarCollapsed ? "w-14" : "w-56"
+              sidebarCollapsed ? "w-14" : "w-52"
             )}
           >
-            {NAV_ITEMS.map(({ path, label, icon: Icon }) =>
+            {navItems.map(({ path, label, icon: Icon }) =>
               sidebarCollapsed ? (
                 <Tooltip key={path}>
                   <TooltipTrigger asChild>
@@ -141,7 +175,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         "flex items-center justify-center h-10 w-10 rounded-lg transition-colors",
                         activePath === path
                           ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50"
+                          : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                       )}
                     >
                       <Icon className="h-4 w-4" />
@@ -157,7 +191,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                     "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left",
                     activePath === path
                       ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50"
+                      : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
@@ -170,8 +204,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <main className="flex-1 overflow-hidden flex flex-col">{children}</main>
         </div>
 
-        <nav className="md:hidden sticky bottom-0 z-20 bg-card/80 backdrop-blur-sm border-t flex items-center h-14 shrink-0">
-          {NAV_ITEMS.map(({ path, label, icon: Icon }) => (
+        <nav className="md:hidden sticky bottom-0 z-20 bg-card/80 glass border-t flex items-center h-14 shrink-0">
+          {navItems.map(({ path, label, icon: Icon }) => (
             <button
               key={path}
               onClick={() => navigate(path)}

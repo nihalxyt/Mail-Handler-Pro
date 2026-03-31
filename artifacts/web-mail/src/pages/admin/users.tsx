@@ -23,8 +23,10 @@ import {
   RefreshCw,
   ArrowLeft,
   Filter,
+  UserCog,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
@@ -37,18 +39,16 @@ export default function AdminUsers() {
   const navigate = useNavigate();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
       const res = await api.adminUsers({ status: statusFilter, search });
       setUsers(res.users);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load users");
+      toast.error(err instanceof Error ? err.message : "Failed to load users");
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,9 @@ export default function AdminUsers() {
             : u
         )
       );
-    } catch {
+      toast.success(`User status updated to ${status}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
       fetchUsers();
     }
   };
@@ -83,31 +85,37 @@ export default function AdminUsers() {
             : u
         )
       );
-    } catch {
+      toast.success(`User role updated to ${role}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
       fetchUsers();
     }
   };
 
   const statusBadge = (status: string) => {
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-      active: "default",
-      pending: "secondary",
-      banned: "destructive",
-    };
-    return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
+    switch (status) {
+      case "active":
+        return <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-1.5">{status}</Badge>;
+      case "pending":
+        return <Badge className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 text-[10px] px-1.5">{status}</Badge>;
+      case "banned":
+        return <Badge className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 text-[10px] px-1.5">{status}</Badge>;
+      default:
+        return <Badge variant="outline" className="text-[10px] px-1.5">{status}</Badge>;
+    }
   };
 
   const roleBadge = (role: string) => {
     if (role === "admin" || role === "super_admin")
-      return <Badge variant="outline" className="text-amber-600 border-amber-300">{role}</Badge>;
+      return <Badge className="bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20 text-[10px] px-1.5">{role}</Badge>;
     if (role === "moderator")
-      return <Badge variant="outline" className="text-blue-600 border-blue-300">{role}</Badge>;
+      return <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 text-[10px] px-1.5">{role}</Badge>;
     return null;
   };
 
   return (
     <div className="flex flex-col h-full">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b px-3 sm:px-4 py-3 space-y-3">
+      <div className="sticky top-0 z-10 bg-background/80 glass border-b px-3 sm:px-4 py-3 space-y-3">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/admin")}>
             <ArrowLeft className="h-4 w-4" />
@@ -145,13 +153,8 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {error && !loading ? (
-          <div className="flex flex-col items-center justify-center py-20 px-4">
-            <p className="text-destructive mb-4">{error}</p>
-            <Button variant="outline" onClick={fetchUsers}><RefreshCw className="h-4 w-4 mr-2" /> Retry</Button>
-          </div>
-        ) : loading ? (
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
+        {loading ? (
           <div className="divide-y">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 p-3 sm:p-4">
@@ -166,24 +169,25 @@ export default function AdminUsers() {
           </div>
         ) : users.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
+            <UserCog className="h-12 w-12 text-muted-foreground/30 mb-3" />
             <p className="text-muted-foreground">No users found</p>
           </div>
         ) : (
           <div className="divide-y">
             {users.map((user) => (
-              <div key={`${user.tg_user_id}-${user.dbKey}`} className="flex items-center gap-3 p-3 sm:p-4 hover:bg-accent/50 transition-colors">
-                <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-xs font-medium shrink-0">
+              <div key={`${user.tg_user_id}-${user.dbKey}`} className="flex items-center gap-3 p-3 sm:p-4 hover:bg-accent/30 transition-colors">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-bold shrink-0">
                   {(user.name || user.username || "?").substring(0, 2).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-medium text-sm truncate">{user.name || user.username || `User ${user.tg_user_id}`}</span>
                     {statusBadge(user.status)}
                     {roleBadge(user.role)}
-                    <Badge variant="outline" className="text-[10px]">{user.dbLabel}</Badge>
+                    <Badge variant="outline" className="text-[10px] px-1">{user.dbLabel}</Badge>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
-                    @{user.username || "—"} · {user.aliasCount} aliases · {user.stats?.total_mails || 0} mails
+                    @{user.username || "\u2014"} · {user.aliasCount} alias{user.aliasCount !== 1 ? "es" : ""} · {user.stats?.total_mails || 0} mails
                   </div>
                 </div>
                 <DropdownMenu>
@@ -192,28 +196,33 @@ export default function AdminUsers() {
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuLabel className="text-xs">Status</DropdownMenuLabel>
                     {user.status !== "active" && (
                       <DropdownMenuItem onClick={() => handleStatusChange(user, "active")}>
-                        <UserCheck className="h-4 w-4 mr-2 text-green-500" /> Approve
+                        <UserCheck className="h-4 w-4 mr-2 text-emerald-500" /> Approve
                       </DropdownMenuItem>
                     )}
                     {user.status !== "banned" && (
-                      <DropdownMenuItem onClick={() => handleStatusChange(user, "banned")}>
-                        <UserX className="h-4 w-4 mr-2 text-red-500" /> Ban
+                      <DropdownMenuItem onClick={() => handleStatusChange(user, "banned")} className="text-destructive">
+                        <UserX className="h-4 w-4 mr-2" /> Ban
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuLabel className="text-xs">Role</DropdownMenuLabel>
                     {user.role !== "admin" && (
                       <DropdownMenuItem onClick={() => handleRoleChange(user, "admin")}>
-                        <Shield className="h-4 w-4 mr-2 text-amber-500" /> Make Admin
+                        <Shield className="h-4 w-4 mr-2 text-violet-500" /> Make Admin
+                      </DropdownMenuItem>
+                    )}
+                    {user.role !== "moderator" && (
+                      <DropdownMenuItem onClick={() => handleRoleChange(user, "moderator")}>
+                        <Shield className="h-4 w-4 mr-2 text-blue-500" /> Make Moderator
                       </DropdownMenuItem>
                     )}
                     {user.role !== "user" && (
                       <DropdownMenuItem onClick={() => handleRoleChange(user, "user")}>
-                        <ShieldOff className="h-4 w-4 mr-2" /> Remove Admin
+                        <ShieldOff className="h-4 w-4 mr-2" /> Remove Role
                       </DropdownMenuItem>
                     )}
                   </DropdownMenuContent>

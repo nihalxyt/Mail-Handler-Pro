@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { authMiddleware } from "../middleware/auth";
 import { findAllAliasesByTgUser, getDb, getAllDbKeys } from "../lib/mongo";
 import type { AliasDoc } from "../lib/mongo";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -23,7 +24,7 @@ router.get("/aliases", authMiddleware, async (req, res) => {
       })),
     });
   } catch (err) {
-    console.error("Aliases error:", err);
+    logger.error({ err }, "Aliases error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -31,14 +32,19 @@ router.get("/aliases", authMiddleware, async (req, res) => {
 router.patch("/aliases/:email/password", authMiddleware, async (req, res) => {
   try {
     const user = req.user!;
-    const targetEmail = decodeURIComponent(req.params.email).toLowerCase();
+    const targetEmail = decodeURIComponent(String(req.params.email)).toLowerCase();
     const { currentPassword, newPassword } = req.body as {
       currentPassword?: string;
       newPassword?: string;
     };
 
-    if (!newPassword || newPassword.length < 6) {
+    if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
       res.status(400).json({ error: "New password must be at least 6 characters" });
+      return;
+    }
+
+    if (newPassword.length > 128) {
+      res.status(400).json({ error: "Password too long" });
       return;
     }
 
@@ -69,6 +75,8 @@ router.patch("/aliases/:email/password", authMiddleware, async (req, res) => {
           { alias_email: targetEmail },
           { $set: { password: hash, updated_at: new Date() } }
         );
+
+        logger.info({ alias: targetEmail }, "Password changed");
         res.json({ success: true });
         return;
       }
@@ -76,7 +84,7 @@ router.patch("/aliases/:email/password", authMiddleware, async (req, res) => {
 
     res.status(404).json({ error: "Alias not found or not yours" });
   } catch (err) {
-    console.error("Password change error:", err);
+    logger.error({ err }, "Password change error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTheme } from "@/contexts/theme-context";
-import { Mail, Eye, EyeOff, Sun, Moon, Monitor } from "lucide-react";
+import { Mail, Eye, EyeOff, Sun, Moon, Monitor, Shield } from "lucide-react";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -36,24 +36,33 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 relative">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.08),transparent_50%)]" />
+
       <button
         onClick={() => setTheme(nextTheme)}
-        className="absolute top-4 right-4 p-2 rounded-lg hover:bg-accent transition-colors"
+        className="absolute top-4 right-4 p-2.5 rounded-xl hover:bg-accent transition-colors z-10"
         title={`Theme: ${theme}`}
       >
         <ThemeIcon className="h-5 w-5 text-muted-foreground" />
       </button>
 
-      <div className="w-full max-w-sm space-y-6">
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-primary text-primary-foreground shadow-lg">
-            <Mail className="h-7 w-7" />
+      <div className="w-full max-w-sm space-y-6 relative z-10">
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative">
+            <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary text-primary-foreground shadow-lg">
+              <Mail className="h-8 w-8" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-lg bg-card border shadow-sm flex items-center justify-center">
+              <Shield className="h-3 w-3 text-primary" />
+            </div>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">MailBox</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your email</p>
+          <div className="text-center">
+            <h1 className="text-2xl font-bold tracking-tight">MailBox</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Secure email management</p>
+          </div>
         </div>
 
-        <Card>
+        <Card className="shadow-lg border-border/50">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">Welcome back</CardTitle>
             <CardDescription>Enter your credentials to continue</CardDescription>
@@ -61,8 +70,9 @@ export default function LoginPage() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="p-3 text-sm bg-destructive/10 text-destructive rounded-lg border border-destructive/20">
-                  {error}
+                <div className="p-3 text-sm bg-destructive/10 text-destructive rounded-lg border border-destructive/20 flex items-start gap-2">
+                  <div className="w-1 h-full bg-destructive rounded-full shrink-0 self-stretch" />
+                  <span>{error}</span>
                 </div>
               )}
 
@@ -77,6 +87,7 @@ export default function LoginPage() {
                   autoComplete="email"
                   required
                   autoFocus
+                  className="h-10"
                 />
               </div>
 
@@ -91,7 +102,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     autoComplete="current-password"
                     required
-                    className="pr-10"
+                    className="pr-10 h-10"
                   />
                   <button
                     type="button"
@@ -104,7 +115,7 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full h-10" disabled={loading}>
                 {loading ? (
                   <span className="flex items-center gap-2">
                     <span className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -118,8 +129,8 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <p className="text-xs text-center text-muted-foreground">
-          Get your login password from the Telegram bot
+        <p className="text-xs text-center text-muted-foreground px-4">
+          Get your login password from the Telegram bot. Your connection is encrypted and secure.
         </p>
       </div>
     </div>

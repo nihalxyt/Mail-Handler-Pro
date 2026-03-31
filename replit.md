@@ -58,10 +58,12 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 
 Express 5 API server with MongoDB-backed email inbox API. Routes live in `src/routes/` and use JWT auth with httpOnly cookies.
 
-- Entry: `src/index.ts` — reads `PORT`, connects MongoDB, starts Express
-- App setup: `src/app.ts` — mounts CORS (with credentials), cookie-parser, JSON/urlencoded parsing, routes at `/api`
+- Entry: `src/index.ts` — reads `PORT`, connects MongoDB, starts Express, graceful shutdown (SIGTERM/SIGINT)
+- App setup: `src/app.ts` — helmet (security headers), compression, rate limiting (120/min general, 20/15min auth), CORS, cookie-parser, JSON/urlencoded parsing, global error handler
 - MongoDB: `src/lib/mongo.ts` — connects to both Bot1 and Bot2 MongoDB databases
 - Auth: `src/middleware/auth.ts` — JWT middleware with httpOnly cookies
+- Admin: `src/middleware/admin.ts` — admin role verification (admin, moderator, super_admin)
+- Utilities: `src/lib/sanitize.ts` — regex escaping, search query sanitization, dbKey validation
 - Routes:
   - `src/routes/health.ts` — `GET /api/healthz`
   - `src/routes/auth.ts` — `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/auth/switch`
@@ -69,7 +71,9 @@ Express 5 API server with MongoDB-backed email inbox API. Routes live in `src/ro
   - `src/routes/mail.ts` — `GET /api/mail/:id`, `PATCH /api/mail/:id`, `POST /api/mail/batch`
   - `src/routes/aliases.ts` — `GET /api/aliases`, `PATCH /api/aliases/:email/password`
   - `src/routes/incoming.ts` — `POST /api/incoming-mail` (Cloudflare worker endpoint, API key auth)
-- Dependencies: `mongodb`, `jsonwebtoken`, `bcryptjs`, `cookie-parser`
+  - `src/routes/admin.ts` — Full admin panel API (dashboard stats, user/alias management, role/status changes, admin action logging with Telegram notifications)
+- Security: helmet headers, rate limiting, regex injection prevention, input length limits, bcrypt(12) password hashing
+- Dependencies: `mongodb`, `jsonwebtoken`, `bcryptjs`, `cookie-parser`, `helmet`, `compression`, `express-rate-limit`
 - Depends on: `@workspace/db`, `@workspace/api-zod`
 
 **Environment Variables (API server):**
@@ -108,13 +112,15 @@ Utility scripts package. Run scripts via `pnpm --filter @workspace/scripts run <
 
 React+Vite web email client with Tailwind CSS, shadcn/ui components, and React Router. Provides a polished inbox UI for email aliases managed by the Telegram bot.
 
-- Pages: Login, Inbox (paginated, search, filter), Mail Detail (safe HTML rendering via sandboxed iframe with hardened DOMPurify — remote images blocked, style/class stripped, link protocols restricted), Settings (password change, theme toggle)
+- Pages: Login, Inbox (paginated, search, filter), Mail Detail (safe HTML rendering via sandboxed iframe with hardened DOMPurify — remote images blocked, style/class stripped, link protocols restricted), Settings (password change, theme toggle), Admin Panel (Dashboard, Users, Aliases, Logs)
 - Auth: Cookie-based sessions via `/api/auth/*` endpoints (httpOnly JWT cookies)
 - Account switching: Header dropdown to switch between user's email aliases
-- Theme: Light/dark/system with CSS custom properties
+- Theme: Indigo/violet color palette with light/dark/system modes, glass effects, custom scrollbar styling
+- Admin panel: Dashboard with stats cards, user management (role/status changes), alias management (activate/deactivate, extend expiry, reset password), activity logs with filtering
+- Toast notifications: sonner for all admin actions and user feedback
 - API proxy: Vite dev server proxies `/api` to api-server on port 8080
 - Responsive: Collapsible desktop sidebar (localStorage-persisted) + mobile bottom nav layout
-- Dependencies: react-router-dom, dompurify, lucide-react, shadcn/ui components (button, badge, card, dropdown-menu, input, label, separator, skeleton, tooltip)
+- Dependencies: react-router-dom, dompurify, lucide-react, sonner, shadcn/ui components (button, badge, card, dropdown-menu, input, label, separator, skeleton, tooltip)
 
 ## MasterMailBot (`master_bot.py`)
 
@@ -143,6 +149,7 @@ Unified Python script running two Telegram email-forwarding bots simultaneously 
 - **`aliases`**: `alias_email` (unique), `tg_user_id`, `user_id`, `active`, `expires_at`, `password` (bcrypt hash), timestamps
 - **`mail_logs`**: `_id` (SHA256 dedupe_key), `alias_email`, `tg_user_id`, `from`, `subject`, `body`, `snippet`, `read`, `starred`, `deleted`, `bot`, timestamps
 - **`settings`** and **`statistics`**: System configuration and aggregated data
+- **`admin_logs`**: Admin action audit trail with `action`, `adminTgId`, `adminName`, `targetType`, `targetId`, `details`, `dbKey`, `timestamp`
 
 ## Cloudflare Email Worker (`cloudflare_email_worker.js`)
 

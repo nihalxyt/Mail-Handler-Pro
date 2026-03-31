@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { api, type DashboardStats } from "@/lib/api";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
@@ -13,7 +13,42 @@ import {
   UserX,
   UserCheck,
   RefreshCw,
+  TrendingUp,
+  ArrowRight,
 } from "lucide-react";
+
+function StatCard({
+  label,
+  value,
+  sub,
+  icon: Icon,
+  color,
+  bg,
+}: {
+  label: string;
+  value: number;
+  sub?: string;
+  icon: typeof Users;
+  color: string;
+  bg: string;
+}) {
+  return (
+    <Card className="relative overflow-hidden group hover:shadow-md transition-shadow">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+            <p className="text-2xl font-bold mt-1 tabular-nums">{value.toLocaleString()}</p>
+            {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
+          </div>
+          <div className={`p-2.5 rounded-xl ${bg}`}>
+            <Icon className={`h-5 w-5 ${color}`} />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -40,11 +75,11 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-28" />
+            <Skeleton key={i} className="h-24 rounded-xl" />
           ))}
         </div>
       </div>
@@ -54,7 +89,11 @@ export default function AdminDashboard() {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-4">
-        <p className="text-destructive mb-4">{error}</p>
+        <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mb-4">
+          <ShieldCheck className="h-8 w-8 text-destructive" />
+        </div>
+        <h3 className="text-lg font-semibold mb-1">Dashboard Error</h3>
+        <p className="text-sm text-muted-foreground mb-4">{error}</p>
         <Button variant="outline" onClick={fetchStats}>
           <RefreshCw className="h-4 w-4 mr-2" /> Retry
         </Button>
@@ -88,66 +127,62 @@ export default function AdminDashboard() {
   );
 
   const cards = [
-    { label: "Total Users", value: totals.users.total, icon: Users, color: "text-blue-500" },
-    { label: "Active Users", value: totals.users.active, icon: UserCheck, color: "text-green-500" },
-    { label: "Pending", value: totals.users.pending, icon: Clock, color: "text-amber-500" },
-    { label: "Banned", value: totals.users.banned, icon: UserX, color: "text-red-500" },
-    { label: "Total Aliases", value: totals.aliases.total, icon: AtSign, color: "text-purple-500" },
-    { label: "Active Aliases", value: totals.aliases.active, icon: ShieldCheck, color: "text-emerald-500" },
-    { label: "Total Emails", value: totals.mails.total, icon: Mail, color: "text-indigo-500" },
-    { label: "Last 24h", value: totals.mails.last24h, icon: Clock, color: "text-cyan-500" },
+    { label: "Total Users", value: totals.users.total, sub: `${totals.users.active} active`, icon: Users, color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-100 dark:bg-blue-500/20" },
+    { label: "Active Users", value: totals.users.active, icon: UserCheck, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-100 dark:bg-emerald-500/20" },
+    { label: "Pending", value: totals.users.pending, icon: Clock, color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-100 dark:bg-amber-500/20" },
+    { label: "Banned", value: totals.users.banned, icon: UserX, color: "text-red-600 dark:text-red-400", bg: "bg-red-100 dark:bg-red-500/20" },
+    { label: "Total Aliases", value: totals.aliases.total, sub: `${totals.aliases.active} active`, icon: AtSign, color: "text-violet-600 dark:text-violet-400", bg: "bg-violet-100 dark:bg-violet-500/20" },
+    { label: "Active Aliases", value: totals.aliases.active, icon: ShieldCheck, color: "text-teal-600 dark:text-teal-400", bg: "bg-teal-100 dark:bg-teal-500/20" },
+    { label: "Total Emails", value: totals.mails.total, sub: `${totals.mails.unread} unread`, icon: Mail, color: "text-indigo-600 dark:text-indigo-400", bg: "bg-indigo-100 dark:bg-indigo-500/20" },
+    { label: "Last 24h", value: totals.mails.last24h, icon: TrendingUp, color: "text-cyan-600 dark:text-cyan-400", bg: "bg-cyan-100 dark:bg-cyan-500/20" },
   ];
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 overflow-y-auto h-full">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 overflow-y-auto h-full scrollbar-thin">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl sm:text-2xl font-bold">Admin Dashboard</h1>
-        <Button variant="ghost" size="icon" onClick={fetchStats}>
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold">Admin Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">System overview and management</p>
+        </div>
+        <Button variant="ghost" size="icon" onClick={fetchStats} className="h-9 w-9">
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {cards.map((c) => (
-          <Card key={c.label}>
-            <CardContent className="pt-4 pb-4 px-4">
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg bg-muted ${c.color}`}>
-                  <c.icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{c.value.toLocaleString()}</p>
-                  <p className="text-xs text-muted-foreground">{c.label}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <StatCard key={c.label} {...c} />
         ))}
       </div>
 
       {Object.entries(stats || {}).length > 1 && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Per-Bot Breakdown</h2>
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Per-Bot Breakdown</h2>
           <div className="grid md:grid-cols-2 gap-4">
             {Object.entries(stats || {}).map(([key, s]) => (
               <Card key={key}>
-                <CardContent className="pt-4 pb-4 px-4">
-                  <h3 className="font-semibold mb-3 text-sm uppercase tracking-wide text-muted-foreground">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-primary" />
                     {key === "bot1" ? "Bot 1" : "Bot 2"}
-                  </h3>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="font-medium">{s.users.active}/{s.users.total}</p>
-                      <p className="text-xs text-muted-foreground">Users</p>
-                    </div>
-                    <div>
-                      <p className="font-medium">{s.aliases.active}/{s.aliases.total}</p>
-                      <p className="text-xs text-muted-foreground">Aliases</p>
-                    </div>
-                    <div>
-                      <p className="font-medium">{s.mails.last24h}</p>
-                      <p className="text-xs text-muted-foreground">24h Mails</p>
-                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Users</span>
+                    <span className="font-medium tabular-nums">{s.users.active}/{s.users.total}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Aliases</span>
+                    <span className="font-medium tabular-nums">{s.aliases.active}/{s.aliases.total}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Emails</span>
+                    <span className="font-medium tabular-nums">{s.mails.total} ({s.mails.unread} unread)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Last 24h</span>
+                    <span className="font-medium tabular-nums">{s.mails.last24h}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -157,14 +192,17 @@ export default function AdminDashboard() {
       )}
 
       <div className="grid sm:grid-cols-3 gap-3">
-        <Button variant="outline" className="justify-start gap-2" onClick={() => navigate("/admin/users")}>
-          <Users className="h-4 w-4" /> Manage Users
+        <Button variant="outline" className="justify-between gap-2 h-12" onClick={() => navigate("/admin/users")}>
+          <span className="flex items-center gap-2"><Users className="h-4 w-4" /> Manage Users</span>
+          <ArrowRight className="h-4 w-4 text-muted-foreground" />
         </Button>
-        <Button variant="outline" className="justify-start gap-2" onClick={() => navigate("/admin/aliases")}>
-          <AtSign className="h-4 w-4" /> Manage Aliases
+        <Button variant="outline" className="justify-between gap-2 h-12" onClick={() => navigate("/admin/aliases")}>
+          <span className="flex items-center gap-2"><AtSign className="h-4 w-4" /> Manage Aliases</span>
+          <ArrowRight className="h-4 w-4 text-muted-foreground" />
         </Button>
-        <Button variant="outline" className="justify-start gap-2" onClick={() => navigate("/admin/logs")}>
-          <Clock className="h-4 w-4" /> Activity Logs
+        <Button variant="outline" className="justify-between gap-2 h-12" onClick={() => navigate("/admin/logs")}>
+          <span className="flex items-center gap-2"><Clock className="h-4 w-4" /> Activity Logs</span>
+          <ArrowRight className="h-4 w-4 text-muted-foreground" />
         </Button>
       </div>
     </div>

@@ -23,8 +23,10 @@ import {
   CalendarPlus,
   Power,
   Clock,
+  ScrollText,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const ACTION_FILTERS = [
   { value: "all", label: "All Actions" },
@@ -49,27 +51,25 @@ const actionIcons: Record<string, typeof Shield> = {
 };
 
 const actionColors: Record<string, string> = {
-  role_change: "text-amber-500",
-  user_approve: "text-green-500",
-  user_ban: "text-red-500",
-  user_pending: "text-amber-500",
-  alias_activate: "text-green-500",
-  alias_deactivate: "text-red-500",
-  alias_extend: "text-blue-500",
-  password_reset: "text-purple-500",
+  role_change: "text-violet-500 bg-violet-500/10",
+  user_approve: "text-emerald-500 bg-emerald-500/10",
+  user_ban: "text-red-500 bg-red-500/10",
+  user_pending: "text-amber-500 bg-amber-500/10",
+  alias_activate: "text-emerald-500 bg-emerald-500/10",
+  alias_deactivate: "text-red-500 bg-red-500/10",
+  alias_extend: "text-blue-500 bg-blue-500/10",
+  password_reset: "text-violet-500 bg-violet-500/10",
 };
 
 export default function AdminLogs() {
   const navigate = useNavigate();
   const [logs, setLogs] = useState<AdminLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
       const res = await api.adminLogs({
         action: actionFilter !== "all" ? actionFilter : undefined,
@@ -77,7 +77,7 @@ export default function AdminLogs() {
       });
       setLogs(res.logs);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load logs");
+      toast.error(err instanceof Error ? err.message : "Failed to load logs");
     } finally {
       setLoading(false);
     }
@@ -103,7 +103,7 @@ export default function AdminLogs() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b px-3 sm:px-4 py-3 space-y-3">
+      <div className="sticky top-0 z-10 bg-background/80 glass border-b px-3 sm:px-4 py-3 space-y-3">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/admin")}>
             <ArrowLeft className="h-4 w-4" />
@@ -141,13 +141,8 @@ export default function AdminLogs() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {error && !loading ? (
-          <div className="flex flex-col items-center justify-center py-20 px-4">
-            <p className="text-destructive mb-4">{error}</p>
-            <Button variant="outline" onClick={fetchLogs}><RefreshCw className="h-4 w-4 mr-2" /> Retry</Button>
-          </div>
-        ) : loading ? (
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
+        {loading ? (
           <div className="divide-y">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex items-start gap-3 p-3 sm:p-4">
@@ -162,31 +157,31 @@ export default function AdminLogs() {
           </div>
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Clock className="h-12 w-12 text-muted-foreground/30 mb-3" />
+            <ScrollText className="h-12 w-12 text-muted-foreground/30 mb-3" />
             <p className="text-muted-foreground">No activity logs yet</p>
           </div>
         ) : (
           <div className="divide-y">
             {logs.map((log, i) => {
               const IconComp = actionIcons[log.action] || Shield;
-              const color = actionColors[log.action] || "text-muted-foreground";
+              const colorClasses = actionColors[log.action] || "text-muted-foreground bg-muted";
 
               return (
-                <div key={i} className="flex items-start gap-3 p-3 sm:p-4">
-                  <div className={cn("p-1.5 rounded-full bg-muted shrink-0", color)}>
+                <div key={i} className="flex items-start gap-3 p-3 sm:p-4 hover:bg-accent/20 transition-colors">
+                  <div className={cn("p-2 rounded-lg shrink-0", colorClasses)}>
                     <IconComp className="h-4 w-4" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-sm font-medium">{log.adminName}</span>
-                      <Badge variant="outline" className="text-[10px]">{log.action.replace(/_/g, " ")}</Badge>
+                      <Badge variant="outline" className="text-[10px] px-1.5">{log.action.replace(/_/g, " ")}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground mt-0.5">
-                      {log.targetType}: <span className="font-mono">{log.targetId}</span>
+                      {log.targetType}: <span className="font-mono text-xs">{log.targetId}</span>
                     </p>
                     <p className="text-xs text-muted-foreground">{log.details}</p>
                   </div>
-                  <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap">
+                  <span className="text-xs text-muted-foreground shrink-0 whitespace-nowrap tabular-nums">
                     {formatTime(log.timestamp)}
                   </span>
                 </div>

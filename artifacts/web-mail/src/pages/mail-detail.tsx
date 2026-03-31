@@ -208,7 +208,7 @@ export default function MailDetailPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b px-3 sm:px-4 py-2 flex items-center gap-2">
+      <div className="sticky top-0 z-10 bg-background/80 glass border-b px-3 sm:px-4 py-2 flex items-center gap-2">
         <Button
           variant="ghost"
           size="icon"
@@ -250,7 +250,7 @@ export default function MailDetailPage() {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
           <h1 className="text-xl sm:text-2xl font-semibold mb-4 leading-tight">
             {mail.subject || "(No Subject)"}

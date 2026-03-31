@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { authMiddleware } from "../middleware/auth";
 import { getDb } from "../lib/mongo";
 import type { MailLogDoc } from "../lib/mongo";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -10,13 +11,13 @@ router.get("/mail/:id", authMiddleware, async (req, res) => {
     const user = req.user!;
     const db = getDb(user.dbKey);
     if (!db) {
-      res.status(500).json({ error: "Database not available" });
+      res.status(503).json({ error: "Database not available" });
       return;
     }
 
     const col = db.collection<MailLogDoc>("mail_logs");
     const mail = await col.findOne({
-      _id: req.params.id as unknown as string,
+      _id: String(req.params.id) as unknown as string,
       alias_email: user.aliasEmail,
     });
 
@@ -44,7 +45,7 @@ router.get("/mail/:id", authMiddleware, async (req, res) => {
       bot: mail.bot,
     });
   } catch (err) {
-    console.error("Mail fetch error:", err);
+    logger.error({ err }, "Mail fetch error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -54,7 +55,7 @@ router.patch("/mail/:id", authMiddleware, async (req, res) => {
     const user = req.user!;
     const db = getDb(user.dbKey);
     if (!db) {
-      res.status(500).json({ error: "Database not available" });
+      res.status(503).json({ error: "Database not available" });
       return;
     }
 
@@ -79,7 +80,7 @@ router.patch("/mail/:id", authMiddleware, async (req, res) => {
 
     const col = db.collection<MailLogDoc>("mail_logs");
     const result = await col.updateOne(
-      { _id: req.params.id as unknown as string, alias_email: user.aliasEmail },
+      { _id: String(req.params.id) as unknown as string, alias_email: user.aliasEmail },
       { $set: update }
     );
 
@@ -90,7 +91,7 @@ router.patch("/mail/:id", authMiddleware, async (req, res) => {
 
     res.json({ success: true, updated: update });
   } catch (err) {
-    console.error("Mail update error:", err);
+    logger.error({ err }, "Mail update error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -100,7 +101,7 @@ router.post("/mail/batch", authMiddleware, async (req, res) => {
     const user = req.user!;
     const db = getDb(user.dbKey);
     if (!db) {
-      res.status(500).json({ error: "Database not available" });
+      res.status(503).json({ error: "Database not available" });
       return;
     }
 
@@ -111,6 +112,17 @@ router.post("/mail/batch", authMiddleware, async (req, res) => {
 
     if (!ids?.length || !action) {
       res.status(400).json({ error: "ids and action required" });
+      return;
+    }
+
+    if (ids.length > 100) {
+      res.status(400).json({ error: "Maximum 100 items per batch" });
+      return;
+    }
+
+    const validActions = ["read", "unread", "star", "unstar", "delete"];
+    if (!validActions.includes(action)) {
+      res.status(400).json({ error: "Invalid action" });
       return;
     }
 
@@ -142,7 +154,7 @@ router.post("/mail/batch", authMiddleware, async (req, res) => {
 
     res.json({ success: true, modified: result.modifiedCount });
   } catch (err) {
-    console.error("Batch update error:", err);
+    logger.error({ err }, "Batch update error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

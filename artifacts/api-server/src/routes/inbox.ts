@@ -2,6 +2,8 @@ import { Router, type IRouter } from "express";
 import { authMiddleware } from "../middleware/auth";
 import { getDb } from "../lib/mongo";
 import type { MailLogDoc } from "../lib/mongo";
+import { sanitizeSearchQuery } from "../lib/sanitize";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -10,13 +12,13 @@ router.get("/inbox", authMiddleware, async (req, res) => {
     const user = req.user!;
     const db = getDb(user.dbKey);
     if (!db) {
-      res.status(500).json({ error: "Database not available" });
+      res.status(503).json({ error: "Database not available" });
       return;
     }
 
     const page = Math.max(0, parseInt(req.query.page as string) || 0);
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
-    const search = (req.query.search as string) || "";
+    const rawSearch = (req.query.search as string) || "";
     const filter = (req.query.filter as string) || "all";
 
     const query: Record<string, unknown> = {
@@ -28,7 +30,8 @@ router.get("/inbox", authMiddleware, async (req, res) => {
     if (filter === "starred") query.starred = true;
     if (filter === "read") query.read = true;
 
-    if (search) {
+    if (rawSearch) {
+      const search = sanitizeSearchQuery(rawSearch);
       query.$or = [
         { subject: { $regex: search, $options: "i" } },
         { from: { $regex: search, $options: "i" } },
@@ -82,7 +85,7 @@ router.get("/inbox", authMiddleware, async (req, res) => {
       totalPages: Math.ceil(total / limit),
     });
   } catch (err) {
-    console.error("Inbox error:", err);
+    logger.error({ err }, "Inbox error");
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -92,7 +95,7 @@ router.get("/inbox/stats", authMiddleware, async (req, res) => {
     const user = req.user!;
     const db = getDb(user.dbKey);
     if (!db) {
-      res.status(500).json({ error: "Database not available" });
+      res.status(503).json({ error: "Database not available" });
       return;
     }
 
@@ -107,7 +110,7 @@ router.get("/inbox/stats", authMiddleware, async (req, res) => {
 
     res.json({ total, unread, starred });
   } catch (err) {
-    console.error("Stats error:", err);
+    logger.error({ err }, "Stats error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

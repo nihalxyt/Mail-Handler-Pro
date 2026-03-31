@@ -23,10 +23,10 @@ import {
   PowerOff,
   CalendarPlus,
   KeyRound,
-  Copy,
-  Check,
+  AtSign,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const ACTIVE_FILTERS = [
   { value: "all", label: "All" },
@@ -38,14 +38,11 @@ export default function AdminAliases() {
   const navigate = useNavigate();
   const [aliases, setAliases] = useState<AdminAlias[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
-  const [copiedPassword, setCopiedPassword] = useState<string | null>(null);
 
   const fetchAliases = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
       const res = await api.adminAliases({
         search,
@@ -53,7 +50,7 @@ export default function AdminAliases() {
       });
       setAliases(res.aliases);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load aliases");
+      toast.error(err instanceof Error ? err.message : "Failed to load aliases");
     } finally {
       setLoading(false);
     }
@@ -73,7 +70,9 @@ export default function AdminAliases() {
             : a
         )
       );
-    } catch {
+      toast.success(`Alias ${!alias.active ? "activated" : "deactivated"}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
       fetchAliases();
     }
   };
@@ -88,7 +87,9 @@ export default function AdminAliases() {
             : a
         )
       );
-    } catch {
+      toast.success(`Extended by ${days} days`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
       fetchAliases();
     }
   };
@@ -96,11 +97,13 @@ export default function AdminAliases() {
   const handleResetPassword = async (alias: AdminAlias) => {
     try {
       const res = await api.adminResetPassword(alias.alias_email, alias.dbKey);
-      setCopiedPassword(res.newPassword);
       await navigator.clipboard.writeText(res.newPassword);
-      setTimeout(() => setCopiedPassword(null), 5000);
+      toast.success("New password copied to clipboard", {
+        description: res.newPassword,
+        duration: 8000,
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reset password");
+      toast.error(err instanceof Error ? err.message : "Failed to reset password");
     }
   };
 
@@ -121,7 +124,7 @@ export default function AdminAliases() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm border-b px-3 sm:px-4 py-3 space-y-3">
+      <div className="sticky top-0 z-10 bg-background/80 glass border-b px-3 sm:px-4 py-3 space-y-3">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/admin")}>
             <ArrowLeft className="h-4 w-4" />
@@ -157,23 +160,10 @@ export default function AdminAliases() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-
-        {copiedPassword && (
-          <div className="flex items-center gap-2 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2 text-sm">
-            <Check className="h-4 w-4 text-green-600 shrink-0" />
-            <span className="text-green-700 dark:text-green-300">New password copied: </span>
-            <code className="font-mono text-green-800 dark:text-green-200 bg-green-100 dark:bg-green-900 px-1.5 py-0.5 rounded">{copiedPassword}</code>
-          </div>
-        )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {error && !loading ? (
-          <div className="flex flex-col items-center justify-center py-20 px-4">
-            <p className="text-destructive mb-4">{error}</p>
-            <Button variant="outline" onClick={fetchAliases}><RefreshCw className="h-4 w-4 mr-2" /> Retry</Button>
-          </div>
-        ) : loading ? (
+      <div className="flex-1 overflow-y-auto scrollbar-thin">
+        {loading ? (
           <div className="divide-y">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 p-3 sm:p-4">
@@ -187,21 +177,31 @@ export default function AdminAliases() {
           </div>
         ) : aliases.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
+            <AtSign className="h-12 w-12 text-muted-foreground/30 mb-3" />
             <p className="text-muted-foreground">No aliases found</p>
           </div>
         ) : (
           <div className="divide-y">
             {aliases.map((alias) => (
-              <div key={`${alias.alias_email}-${alias.dbKey}`} className="flex items-center gap-3 p-3 sm:p-4 hover:bg-accent/50 transition-colors">
+              <div key={`${alias.alias_email}-${alias.dbKey}`} className="flex items-center gap-3 p-3 sm:p-4 hover:bg-accent/30 transition-colors">
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-mono text-sm truncate">{alias.alias_email}</span>
-                    <Badge variant={alias.active ? "default" : "destructive"}>
+                    <Badge className={cn(
+                      "text-[10px] px-1.5",
+                      alias.active
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                        : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20"
+                    )}>
                       {alias.active ? "Active" : "Inactive"}
                     </Badge>
-                    {isExpired(alias.expires_at) && <Badge variant="destructive">Expired</Badge>}
-                    {!alias.hasPassword && <Badge variant="secondary">No Password</Badge>}
-                    <Badge variant="outline" className="text-[10px]">{alias.dbLabel}</Badge>
+                    {isExpired(alias.expires_at) && (
+                      <Badge className="bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20 text-[10px] px-1.5">Expired</Badge>
+                    )}
+                    {!alias.hasPassword && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5">No PW</Badge>
+                    )}
+                    <Badge variant="outline" className="text-[10px] px-1">{alias.dbLabel}</Badge>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     Owner: {alias.ownerName} · Expires: {formatExpiry(alias.expires_at)}
@@ -213,28 +213,23 @@ export default function AdminAliases() {
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align="end" className="w-48">
                     <DropdownMenuLabel className="text-xs">Status</DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => handleToggle(alias)}>
                       {alias.active ? (
                         <><PowerOff className="h-4 w-4 mr-2 text-red-500" /> Deactivate</>
                       ) : (
-                        <><Power className="h-4 w-4 mr-2 text-green-500" /> Activate</>
+                        <><Power className="h-4 w-4 mr-2 text-emerald-500" /> Activate</>
                       )}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-xs">Extend</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => handleExtend(alias, 7)}>
-                      <CalendarPlus className="h-4 w-4 mr-2" /> +7 Days
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExtend(alias, 30)}>
-                      <CalendarPlus className="h-4 w-4 mr-2" /> +30 Days
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleExtend(alias, 90)}>
-                      <CalendarPlus className="h-4 w-4 mr-2" /> +90 Days
-                    </DropdownMenuItem>
+                    <DropdownMenuLabel className="text-xs">Extend Expiry</DropdownMenuLabel>
+                    {[7, 30, 90].map((d) => (
+                      <DropdownMenuItem key={d} onClick={() => handleExtend(alias, d)}>
+                        <CalendarPlus className="h-4 w-4 mr-2" /> +{d} Days
+                      </DropdownMenuItem>
+                    ))}
                     <DropdownMenuSeparator />
-                    <DropdownMenuLabel className="text-xs">Password</DropdownMenuLabel>
                     <DropdownMenuItem onClick={() => handleResetPassword(alias)}>
                       <KeyRound className="h-4 w-4 mr-2" /> Reset Password
                     </DropdownMenuItem>
