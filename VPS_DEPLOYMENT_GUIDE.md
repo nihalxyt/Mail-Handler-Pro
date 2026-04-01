@@ -1,41 +1,41 @@
-# VPS Deployment Guide — ZayMail (zayvex.cloud)
+# VPS Deployment Guide — ZayMail (mail.zayvex.cloud)
 
 ## আপনার প্রজেক্টে ৩টি আলাদা সার্ভিস আছে:
 
 | # | সার্ভিস | কাজ | ভাষা |
 |---|---------|------|------|
-| 1 | **API Server** | Web mail API (Express.js) | Node.js |
+| 1 | **API Server** | Web mail API (Express.js) + email notification via Bot API | Node.js |
 | 2 | **Web Mail Client** | Frontend UI (React) | Static HTML/JS/CSS |
 | 3 | **Telegram Bot** | Email bot (master_bot.py) | Python |
 | 4 | **Cloudflare Worker** | Email receive করা | JS (Cloudflare এ deploy) |
+
+## Email Flow (Port 25 দরকার নেই!)
+
+```
+Email আসে → Cloudflare Email Routing → Worker → POST /api/incoming-mail → MongoDB store → Telegram notification (Bot API)
+```
+
+- VPS-এ কোনো SMTP server/port 25 লাগে না
+- Cloudflare Worker email receive করে API-তে POST করে
+- API email store করে + Bot API দিয়ে Telegram notification পাঠায়
 
 ---
 
 ## ধাপ ১: VPS এ প্রয়োজনীয় সফটওয়্যার ইনস্টল
 
 ```bash
-# System update
 sudo apt update && sudo apt upgrade -y
 
-# Node.js 20 LTS install (recommended for production)
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# pnpm install
 npm install -g pnpm
 
-# Python 3 + pip
 sudo apt install -y python3 python3-pip python3-venv
 
-# Nginx (reverse proxy)
 sudo apt install -y nginx
 
-# PM2 (process manager — সব সার্ভিস চালু রাখবে, VPS restart হলেও)
 npm install -g pm2
-
-# Certbot (free SSL certificate)
-# certbot দরকার নেই — Cloudflare Tunnel HTTPS handle করবে
-# sudo apt install -y certbot python3-certbot-nginx
 ```
 
 ---
@@ -43,24 +43,18 @@ npm install -g pm2
 ## ধাপ ২: প্রজেক্ট আপলোড ও বিল্ড
 
 ```bash
-# প্রজেক্ট আপলোড (git clone অথবা scp/rsync)
 cd /home/your-user
 git clone <your-repo-url> mailbot
 cd mailbot
 
-# Dependencies install
 pnpm install
 
-# ===== API Server Build =====
 cd artifacts/api-server
 pnpm run build
-# Output: artifacts/api-server/dist/index.mjs
 cd ../..
 
-# ===== Web Mail Build =====
 cd artifacts/web-mail
 PORT=3000 BASE_PATH=/ pnpm run build
-# Output: artifacts/web-mail/dist/public/ (static files)
 cd ../..
 ```
 
@@ -79,7 +73,7 @@ nano /home/your-user/mailbot/.env
 PORT=8080
 NODE_ENV=production
 
-# MongoDB connections (আপনার MongoDB Atlas বা local MongoDB)
+# MongoDB connections
 BOT1_MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/
 BOT2_MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/
 BOT1_DB_NAME=mailbot_pro
@@ -88,21 +82,31 @@ BOT2_DB_NAME=mailbot_pro
 # JWT Secret (একটি শক্তিশালী random string দিন)
 JWT_SECRET=your-super-secret-random-string-here-change-this
 
-# Cloudflare Worker এর জন্য API key
+# API key (Cloudflare Worker + Bot token generation দুটোই এটা ব্যবহার করে)
 INCOMING_MAIL_API_KEY=your-incoming-mail-api-key
+
+# CORS
+CORS_ORIGINS=https://mail.zayvex.cloud
+
+# Bot tokens (API server থেকে Telegram notification পাঠানোর জন্য)
+BOT1_TG_BOT_TOKEN=123456:ABC-your-bot1-token
+BOT2_TG_BOT_TOKEN=789012:DEF-your-bot2-token
+BOT1_SUPER_ADMIN_IDS=7166047321
+BOT2_SUPER_ADMIN_IDS=7166047321
 
 # ===== Telegram Bot =====
 BOT1_API_ID=your-bot1-api-id
 BOT1_API_HASH=your-bot1-api-hash
-BOT1_BOT_TOKEN=your-bot1-token
 BOT2_API_ID=your-bot2-api-id
 BOT2_API_HASH=your-bot2-api-hash
-BOT2_BOT_TOKEN=your-bot2-token
-SUPER_ADMIN_IDS=123456789,987654321
+SUPER_ADMIN_IDS=7166047321
 
-# SMTP (দরকার নেই যদি Cloudflare Email Worker ব্যবহার করেন)
-# SMTP_HOST=0.0.0.0
-# SMTP_PORT=25
+# Bot → API communication (login link generation)
+API_BASE_URL=https://mail.zayvex.cloud/api
+# INCOMING_MAIL_API_KEY উপরেরটাই ব্যবহার হবে (একই key)
+
+WEB_BASE_URL=https://mail.zayvex.cloud
+TIMEZONE=Asia/Dhaka
 ```
 
 ---
@@ -122,6 +126,7 @@ module.exports = {
       name: "api-server",
       script: "./artifacts/api-server/dist/index.mjs",
       cwd: "/home/your-user/mailbot",
+      node_args: "--enable-source-maps",
       env: {
         NODE_ENV: "production",
         PORT: 8080,
@@ -147,15 +152,11 @@ module.exports = {
 ```
 
 ```bash
-# ===== Python Dependencies (Telegram Bot) =====
+# Python Dependencies
 cd /home/your-user/mailbot
-pip3 install -r requirements.txt
+pip3 install telethon motor aiohttp python-dotenv uvloop bcrypt
 
-# যদি permission error আসে:
-pip3 install --user -r requirements.txt
-
-# ===== সব সার্ভিস চালু করুন =====
-cd /home/your-user/mailbot
+# সব সার্ভিস চালু করুন
 pm2 start ecosystem.config.cjs
 
 # চেক করুন সব চলছে কিনা
@@ -181,18 +182,15 @@ sudo nano /etc/nginx/sites-available/mailbot
 ```nginx
 server {
     listen 80;
-    server_name zayvex.cloud;
+    server_name mail.zayvex.cloud;
 
-    # ===== Frontend (Static React Files) =====
     root /home/your-user/mailbot/artifacts/web-mail/dist/public;
     index index.html;
 
-    # React SPA — সব route এ index.html serve করবে
     location / {
         try_files $uri $uri/ /index.html;
     }
 
-    # ===== API Proxy =====
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -206,52 +204,38 @@ server {
         proxy_buffering off;
     }
 
-    # ===== Static file caching =====
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf)$ {
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
 
-    # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
 
-    # File upload size limit
     client_max_body_size 10M;
 }
 ```
 
 ```bash
-# Enable site
 sudo ln -s /etc/nginx/sites-available/mailbot /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
-
-# Test config
 sudo nginx -t
-
-# Restart nginx
 sudo systemctl restart nginx
 sudo systemctl enable nginx
 ```
 
 ---
 
-## ধাপ ৬: Cloudflare Tunnel দিয়ে HTTPS (zayvex.cloud)
-
-Cloudflare Tunnel ব্যবহার করলে SSL certificate, Nginx reverse proxy কিছুই লাগে না! Cloudflare সব handle করবে।
+## ধাপ ৬: Cloudflare Tunnel দিয়ে HTTPS (mail.zayvex.cloud)
 
 ```bash
-# cloudflared install
 curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
 sudo dpkg -i cloudflared.deb
 
-# Login to Cloudflare
 cloudflared tunnel login
 
-# Tunnel তৈরি করুন
 cloudflared tunnel create zaymail
 
-# Config file তৈরি করুন
 mkdir -p ~/.cloudflared
 nano ~/.cloudflared/config.yml
 ```
@@ -262,32 +246,22 @@ tunnel: zaymail
 credentials-file: /home/your-user/.cloudflared/<TUNNEL_ID>.json
 
 ingress:
-  # API requests
-  - hostname: zayvex.cloud
+  - hostname: mail.zayvex.cloud
     path: /api/*
     service: http://localhost:8080
-  # Frontend (static files via Nginx)
-  - hostname: zayvex.cloud
+  - hostname: mail.zayvex.cloud
     service: http://localhost:80
-  # Catch-all
   - service: http_status:404
 ```
 
 ```bash
-# DNS record যোগ করুন (Cloudflare এ CNAME)
-cloudflared tunnel route dns zaymail zayvex.cloud
+cloudflared tunnel route dns zaymail mail.zayvex.cloud
 
-# Tunnel চালু করুন (PM2 দিয়ে)
 pm2 start "cloudflared tunnel run zaymail" --name cloudflare-tunnel
 pm2 save
 ```
 
-**Nginx তখনও লাগবে** static files serve করার জন্য (port 80 এ), কিন্তু SSL/HTTPS Cloudflare Tunnel handle করবে। Nginx config এ `listen 80;` আর `server_name zayvex.cloud;` রাখুন।
-
-এই সেটআপে:
-- Cloudflare Tunnel → HTTPS terminate করে
-- zayvex.cloud → Tunnel → Nginx (frontend) + API Server (backend)
-- কোনো port open করতে হবে না VPS এ (extra secure!)
+**Nginx তখনও লাগবে** static files serve করার জন্য (port 80 এ), কিন্তু SSL/HTTPS Cloudflare Tunnel handle করবে।
 
 ---
 
@@ -296,15 +270,31 @@ pm2 save
 এটি আপনার VPS এ না, Cloudflare এ deploy হবে:
 
 ```bash
-# আপনার local machine বা VPS থেকে
 cd /home/your-user/mailbot
 npx wrangler deploy cloudflare_email_worker.js --config cloudflare_wrangler.toml
 
-# Secret set করুন
 npx wrangler secret put INCOMING_MAIL_API_KEY --config cloudflare_wrangler.toml
 ```
 
 Cloudflare Dashboard এ যান → Email Routing → আপনার domain select করুন → Catch-all rule এ worker সেট করুন।
+
+**Email Routing সেটআপ:**
+1. Cloudflare Dashboard → আপনার domain → Email → Email Routing
+2. Enable Email Routing
+3. Routes → Catch-all → Edit → Route to Worker → `zaymail-email-worker` select করুন
+4. Save
+
+---
+
+## গুরুত্বপূর্ণ: INCOMING_MAIL_API_KEY
+
+এই একটি key ৩ জায়গায় একই থাকতে হবে:
+
+| যেখানে | কেন |
+|--------|-----|
+| **API Server `.env`** | Cloudflare Worker + Bot দুটোই এটা দিয়ে authenticate করে |
+| **Cloudflare Worker secret** | Email POST করার সময় `X-API-Key` header এ পাঠায় |
+| **Bot `.env`** (`INCOMING_MAIL_API_KEY`) | Login link তৈরি করার সময় API-তে authenticate করতে |
 
 ---
 
@@ -312,21 +302,21 @@ Cloudflare Dashboard এ যান → Email Routing → আপনার domain 
 
 ```
 /home/your-user/mailbot/
-├── .env                              # Environment variables
-├── ecosystem.config.cjs              # PM2 config
-├── master_bot.py                     # Telegram bot
-├── bot1_session, bot2_session        # Telegram sessions
+├── .env
+├── ecosystem.config.cjs
+├── master_bot.py
+├── bot1_session, bot2_session
 ├── artifacts/
 │   ├── api-server/
 │   │   └── dist/
-│   │       └── index.mjs             # Built API server
+│   │       └── index.mjs
 │   └── web-mail/
 │       └── dist/
-│           └── public/               # Built frontend (Nginx serves this)
+│           └── public/
 │               ├── index.html
 │               ├── assets/
 │               └── ...
-└── node_modules/                     # pnpm install creates this
+└── node_modules/
 ```
 
 ---
@@ -345,6 +335,25 @@ pm2 stop all                # সব বন্ধ
 
 ---
 
+## আপডেট করার সময়
+
+```bash
+cd /home/your-user/mailbot
+git pull
+
+# API rebuild
+cd artifacts/api-server && pnpm run build && cd ../..
+
+# Frontend rebuild
+cd artifacts/web-mail && PORT=3000 BASE_PATH=/ pnpm run build && cd ../..
+
+# Restart
+pm2 restart api-server
+pm2 restart telegram-bot
+```
+
+---
+
 ## Troubleshooting
 
 | সমস্যা | সমাধান |
@@ -353,5 +362,7 @@ pm2 stop all                # সব বন্ধ
 | API error | `pm2 logs api-server` দেখুন |
 | MongoDB connect fail | `.env` এ URI ঠিক আছে কিনা চেক করুন |
 | Bot চলছে না | `pm2 logs telegram-bot` দেখুন, session files চেক করুন |
-| Tunnel কাজ করছে না | `pm2 logs cloudflare-tunnel` দেখুন, `cloudflared tunnel info zaymail` চালান |
+| Tunnel কাজ করছে না | `pm2 logs cloudflare-tunnel` দেখুন |
 | Email আসছে না | Cloudflare Dashboard → Email Routing চেক করুন, Worker logs দেখুন |
+| Login link কাজ করছে না | Bot ও API-তে `INCOMING_MAIL_API_KEY` একই কিনা চেক করুন |
+| Notification আসছে না | API-তে `BOT1_TG_BOT_TOKEN`/`BOT2_TG_BOT_TOKEN` সেট আছে কিনা চেক করুন |

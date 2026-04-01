@@ -30,7 +30,7 @@ artifacts-monorepo/
 │   └── db/                 # Drizzle ORM schema + DB connection
 ├── scripts/                # Utility scripts (single workspace package)
 │   └── src/                # Individual .ts scripts
-├── master_bot.py           # Dual Telegram email bot with SMTP + web password management
+├── master_bot.py           # Dual Telegram email bot with web login links + password management
 ├── cloudflare_email_worker.js  # Cloudflare Email Worker for edge email reception
 ├── cloudflare_wrangler.toml    # Wrangler config for CF worker deployment
 ├── pnpm-workspace.yaml
@@ -127,11 +127,11 @@ React+Vite web email client branded as **ZayMail** with Tailwind CSS, shadcn/ui 
 
 ## MasterMailBot (`master_bot.py`)
 
-Unified Python script running two Telegram email-forwarding bots simultaneously (Bot 1 for Nihal, Bot 2 for Maruf) with a built-in SMTP server (aiosmtpd on port 25).
+Unified Python script running two Telegram email-forwarding bots simultaneously (Bot 1 for Nihal, Bot 2 for Maruf). Email reception is handled by Cloudflare Worker → API (no SMTP/port 25 needed).
 
 ### Key Features
 - **Dual bot**: Both bots share identical functionality but use separate MongoDB databases, alias caches, and Telegram sessions
-- **SMTP server**: aiosmtpd replaces Gmail/IMAP polling; incoming emails route to the correct bot/user automatically
+- **No SMTP needed**: Email reception via Cloudflare Email Worker → API → MongoDB → Telegram notification (via Bot API). Port 25 not required.
 - **Web password management**: Auto-generates bcrypt-hashed passwords on alias creation; users can view/reset passwords via "Web Password" button in user panel
 - **Web login links**: Bot generates single-use 5-minute login links via API's `/api/auth/create-access-token` endpoint. Users tap "Login Link" in bot → get a URL → auto-logged in on web. Admins get admin-type tokens for direct admin panel access. Admin can also send login links to any user from User Management panel.
 - **uvloop**: High-performance event loop (falls back to default asyncio if not installed)
@@ -140,13 +140,12 @@ Unified Python script running two Telegram email-forwarding bots simultaneously 
 - **Admin fallback**: Unassigned emails route to Bot1 only, first admin only
 
 ### Dependencies
-`telethon`, `motor`, `aiosmtpd`, `python-dotenv`, `uvloop`, `bcrypt` (optional, falls back to sha256)
+`telethon`, `motor`, `aiohttp`, `python-dotenv`, `uvloop`, `bcrypt` (optional, falls back to sha256)
 
 ### Config
 - Bot credentials, MongoDB URIs, and super admin IDs are set via environment variables (all required, no hardcoded defaults)
 - `API_BASE_URL` — API server base URL for token generation (default: `https://mail.zayvex.cloud/api`)
 - `INCOMING_MAIL_API_KEY` — API key for authenticating with the API server (used for both email ingestion and login token generation)
-- SMTP binds to `SMTP_HOST`/`SMTP_PORT` (default `0.0.0.0:25`)
 - Session files: `bot1_session`, `bot2_session`
 - Timezone: `Asia/Dhaka`
 

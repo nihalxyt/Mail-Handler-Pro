@@ -3,7 +3,7 @@ main = "cloudflare_email_worker.js"
 compatibility_date = "2024-09-01"
 
 [vars]
-API_ENDPOINT = "https://zayvex.cloud"
+API_ENDPOINT = "https://mail.zayvex.cloud"
 
 # Set INCOMING_MAIL_API_KEY as a secret:
 # wrangler secret put INCOMING_MAIL_API_KEY

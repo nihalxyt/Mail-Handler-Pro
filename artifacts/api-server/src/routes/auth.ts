@@ -447,17 +447,18 @@ router.post("/auth/token-login", async (req, res) => {
     for (const key of getAllDbKeys()) {
       const db = getDb(key);
       if (!db) continue;
-      const doc = await db.collection("login_tokens").findOneAndUpdate(
+      const result = await db.collection("login_tokens").findOneAndUpdate(
         {
           _id: tokenHash,
           used: false,
           expires_at: { $gt: now },
         },
         { $set: { used: true, used_at: now } },
-        { returnDocument: "before" }
+        { returnDocument: "before", includeResultMetadata: false }
       );
-      if (doc) {
-        tokenDoc = doc as Record<string, unknown>;
+      const doc = result as Record<string, unknown> | null;
+      if (doc && doc.alias_email && doc.type) {
+        tokenDoc = doc;
         foundDbKey = key;
         break;
       }
