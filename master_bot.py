@@ -1448,12 +1448,13 @@ async def _deliver_email(bot_instance, col_aliases, col_users, col_logs,
             f"📧 **To:** `{matched_alias}`\n\n"
             f"**Preview:**\n{short(clean_prev, 250)}"
         )
+        mail_url = f"{WEB_BASE_URL}/mail/{dedupe_key}"
         try:
             await bot_instance.send_message(
                 tg_user_id, text,
                 buttons=[
                     [Button.inline("📖 Read Full Mail", cb("ML", dedupe_key[:20]))],
-                    [Button.url("🌐 Read on Web", f"{WEB_BASE_URL}")],
+                    [Button.url("🌐 Read on Web", mail_url)],
                     [Button.inline("📥 Go to Inbox", cb("M", "inbox", "0"))]
                 ]
             )
@@ -2131,11 +2132,12 @@ def make_callback_handler(
                 f"📝 **Subject:**\n**{lg.get('subject', 'No Subject')}**\n━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"{clean_body}\n━━━━━━━━━━━━━━━━━━━━"
             )
+            mail_web_url = f"{WEB_BASE_URL}/mail/{lg['_id']}"
             buttons = [
                 [Button.inline("🗑️ Delete", cb("MD", log_id_prefix)),
                  Button.inline("⭐ Star/Unstar", cb("MK", log_id_prefix))],
                 [Button.inline("📩 Mark Unread", cb("MU", log_id_prefix)),
-                 Button.url("🌐 Read on Web", f"{WEB_BASE_URL}")],
+                 Button.url("🌐 Read on Web", mail_web_url)],
                 [Button.inline("⬅️ Inbox", cb("M", "inbox", "0"))],
             ]
             return await event.edit(text, buttons=buttons, link_preview=False)
@@ -2259,12 +2261,12 @@ def make_message_handler(
                 {"$set": {"password": hashed, "updated_at": now_utc()}}
             )
             admin_state.pop(event.sender_id, None)
-            display_pw = new_pw if text.lower() == "generate" else "••••••••"
             return await event.reply(
-                f"✅ **Password Changed!**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"✅ **Password Updated!**\n━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📧 Email: `{alias_email}`\n"
-                f"🔑 Password: `{display_pw}`\n\n"
-                f"🌐 Login at: {WEB_BASE_URL}",
+                f"🔑 New Password: `{new_pw}`\n\n"
+                f"🌐 Login at: {WEB_BASE_URL}\n\n"
+                "⚠️ **Save this password!** It cannot be recovered later.",
                 buttons=[
                     [Button.inline("🔑 My Passwords", cb("M", "webpass"))],
                     [Button.inline("⬅️ Dashboard", cb("M", "back"))]

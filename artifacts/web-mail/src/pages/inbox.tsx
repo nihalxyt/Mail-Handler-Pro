@@ -217,8 +217,13 @@ export default function InboxPage() {
 
   const handleSwipeAction = async (mailId: string, action: "delete" | "read") => {
     if (action === "delete") {
+      const removed = mails.find((m) => m.id === mailId);
       setMails((prev) => prev.filter((m) => m.id !== mailId));
-      await api.patchMail(mailId, { deleted: true });
+      try {
+        await api.patchMail(mailId, { deleted: true });
+      } catch {
+        if (removed) setMails((prev) => [...prev, removed]);
+      }
     } else {
       const mail = mails.find((m) => m.id === mailId);
       if (!mail) return;
@@ -226,7 +231,13 @@ export default function InboxPage() {
       setMails((prev) =>
         prev.map((m) => (m.id === mailId ? { ...m, read: newRead } : m))
       );
-      await api.patchMail(mailId, { read: newRead });
+      try {
+        await api.patchMail(mailId, { read: newRead });
+      } catch {
+        setMails((prev) =>
+          prev.map((m) => (m.id === mailId ? { ...m, read: !newRead } : m))
+        );
+      }
     }
   };
 
@@ -243,12 +254,12 @@ export default function InboxPage() {
               placeholder="Search emails..."
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
-              className="pl-9 h-9"
+              className="pl-9 h-9 rounded-xl"
             />
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0">
+              <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0 rounded-xl">
                 <Filter className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{activeFilter.label}</span>
               </Button>
@@ -272,20 +283,23 @@ export default function InboxPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 shrink-0"
+            className="h-9 w-9 shrink-0 rounded-xl"
             onClick={handleRefresh}
             disabled={refreshing}
           >
-            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+            <RefreshCw className={cn("h-4 w-4 transition-transform duration-500", refreshing && "animate-spin")} />
           </Button>
         </div>
         {stats && (
           <div className="flex items-center gap-3 text-xs text-muted-foreground animate-in fade-in duration-300">
-            <span>{stats.total} total</span>
+            <span className="tabular-nums">{stats.total} total</span>
             {stats.unread > 0 && (
-              <span className="font-medium text-primary">{stats.unread} unread</span>
+              <span className="font-medium text-primary tabular-nums">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary mr-1 animate-pulse" />
+                {stats.unread} unread
+              </span>
             )}
-            {stats.starred > 0 && <span>{stats.starred} starred</span>}
+            {stats.starred > 0 && <span className="tabular-nums">{stats.starred} starred</span>}
           </div>
         )}
       </div>
@@ -325,7 +339,7 @@ export default function InboxPage() {
         ) : loading ? (
           <div className="divide-y">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 sm:p-4" style={{ opacity: 1 - i * 0.08 }}>
+              <div key={i} className="flex items-start gap-3 p-3 sm:p-4 animate-in fade-in duration-300" style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both", opacity: 1 - i * 0.08 }}>
                 <Skeleton className="h-10 w-10 rounded-full shrink-0" />
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center justify-between">
@@ -399,13 +413,18 @@ export default function InboxPage() {
                         !mail.read && "bg-primary/[0.03]"
                       )}
                     >
-                      <div
-                        className={cn(
-                          "h-10 w-10 rounded-full flex items-center justify-center text-white text-xs font-medium shrink-0 shadow-sm transition-transform duration-150 group-hover:scale-105",
-                          colorClass
+                      <div className="relative shrink-0">
+                        <div
+                          className={cn(
+                            "h-10 w-10 rounded-full flex items-center justify-center text-white text-xs font-medium shadow-sm transition-transform duration-150 group-hover:scale-105",
+                            colorClass
+                          )}
+                        >
+                          {initials}
+                        </div>
+                        {!mail.read && (
+                          <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary border-2 border-background" />
                         )}
-                      >
-                        {initials}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
@@ -419,19 +438,19 @@ export default function InboxPage() {
                           >
                             {senderName}
                           </span>
-                          <span className="text-xs text-muted-foreground shrink-0">
+                          <span className="text-[11px] text-muted-foreground shrink-0 tabular-nums">
                             {formatDate(mail.receivedAt)}
                           </span>
                         </div>
                         <p
                           className={cn(
-                            "text-sm truncate",
+                            "text-sm truncate mt-0.5",
                             !mail.read ? "font-medium" : "text-muted-foreground"
                           )}
                         >
                           {mail.subject || "(No Subject)"}
                         </p>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                        <p className="text-xs text-muted-foreground/70 truncate mt-0.5 leading-relaxed">
                           {mail.snippet}
                         </p>
                       </div>
@@ -445,7 +464,7 @@ export default function InboxPage() {
                               "h-4 w-4 transition-all duration-200",
                               mail.starred
                                 ? "fill-amber-400 text-amber-400 scale-110"
-                                : "text-muted-foreground/40"
+                                : "text-muted-foreground/40 hover:text-muted-foreground/60"
                             )}
                           />
                         </button>
@@ -481,8 +500,9 @@ export default function InboxPage() {
             <div ref={sentinelRef} className="h-1" />
 
             {loadingMore && (
-              <div className="flex items-center justify-center py-4 animate-in fade-in duration-200">
-                <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <div className="flex items-center justify-center py-4 gap-2 animate-in fade-in duration-200">
+                <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs text-muted-foreground">Loading more...</span>
               </div>
             )}
           </div>

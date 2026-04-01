@@ -14,8 +14,28 @@ const app: Express = express();
 app.set("trust proxy", 1);
 
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'", "https://mail.zayvex.cloud", "wss:", "ws:"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: [],
+    },
+  },
   crossOriginEmbedderPolicy: false,
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  xContentTypeOptions: true,
+  xFrameOptions: { action: "deny" },
+  xXssProtection: true,
+  permittedCrossDomainPolicies: { permittedPolicies: "none" },
 }));
 
 app.use(compression());
@@ -83,7 +103,16 @@ const authLimiter = rateLimit({
 app.use("/api", apiLimiter);
 app.use("/api/auth/login", authLimiter);
 
-const CSRF_EXEMPT = ["/auth/login", "/auth/logout", "/healthz", "/incoming-mail"];
+const adminAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many admin login attempts. Try again later." },
+});
+app.use("/api/auth/admin-login", adminAuthLimiter);
+
+const CSRF_EXEMPT = ["/auth/login", "/auth/admin-login", "/auth/logout", "/healthz", "/incoming-mail"];
 app.use("/api", (req: Request, res: Response, next: NextFunction) => {
   if (CSRF_EXEMPT.some((p) => req.path === p || req.path.startsWith(p))) {
     next();

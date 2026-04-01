@@ -24,6 +24,7 @@ import {
   CalendarPlus,
   KeyRound,
   AtSign,
+  Trash2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -107,6 +108,18 @@ export default function AdminAliases() {
     }
   };
 
+  const handleDelete = async (alias: AdminAlias) => {
+    if (!confirm(`Are you sure you want to permanently delete ${alias.alias_email}? This will also remove all associated emails. This action cannot be undone.`)) return;
+    try {
+      await api.adminDeleteAlias(alias.alias_email, alias.dbKey);
+      setAliases((prev) => prev.filter((a) => !(a.alias_email === alias.alias_email && a.dbKey === alias.dbKey)));
+      toast.success("Alias deleted permanently");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to delete alias");
+      fetchAliases();
+    }
+  };
+
   const isExpired = (expiresAt: string) => {
     if (!expiresAt) return false;
     return new Date(expiresAt) < new Date();
@@ -126,11 +139,11 @@ export default function AdminAliases() {
     <div className="flex flex-col h-full">
       <div className="sticky top-0 z-10 bg-background/80 glass border-b px-3 sm:px-4 py-3 space-y-3">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/admin")}>
+          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-xl" onClick={() => navigate("/admin")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-lg font-semibold flex-1">Alias Management</h1>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={fetchAliases}>
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={fetchAliases}>
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
@@ -141,12 +154,12 @@ export default function AdminAliases() {
               placeholder="Search aliases..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9"
+              className="pl-9 h-9 rounded-xl"
             />
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0">
+              <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0 rounded-xl">
                 <Filter className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{ACTIVE_FILTERS.find((f) => f.value === activeFilter)?.label}</span>
               </Button>
@@ -166,7 +179,7 @@ export default function AdminAliases() {
         {loading ? (
           <div className="divide-y">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 p-3 sm:p-4">
+              <div key={i} className="flex items-center gap-3 p-3 sm:p-4 animate-in fade-in duration-300" style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}>
                 <div className="flex-1 space-y-1">
                   <Skeleton className="h-4 w-48" />
                   <Skeleton className="h-3 w-32" />
@@ -176,14 +189,18 @@ export default function AdminAliases() {
             ))}
           </div>
         ) : aliases.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in slide-in-from-bottom-4 duration-400">
             <AtSign className="h-12 w-12 text-muted-foreground/30 mb-3" />
             <p className="text-muted-foreground">No aliases found</p>
           </div>
         ) : (
           <div className="divide-y">
-            {aliases.map((alias) => (
-              <div key={`${alias.alias_email}-${alias.dbKey}`} className="flex items-center gap-3 p-3 sm:p-4 hover:bg-accent/30 transition-colors">
+            {aliases.map((alias, i) => (
+              <div
+                key={`${alias.alias_email}-${alias.dbKey}`}
+                className="flex items-center gap-3 p-3 sm:p-4 hover:bg-accent/30 transition-colors animate-in fade-in slide-in-from-bottom-2"
+                style={{ animationDelay: `${Math.min(i * 30, 300)}ms`, animationFillMode: "both" }}
+              >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-mono text-sm truncate">{alias.alias_email}</span>
@@ -209,7 +226,7 @@ export default function AdminAliases() {
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-lg">
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -232,6 +249,13 @@ export default function AdminAliases() {
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => handleResetPassword(alias)}>
                       <KeyRound className="h-4 w-4 mr-2" /> Reset Password
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => handleDelete(alias)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" /> Delete Alias
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

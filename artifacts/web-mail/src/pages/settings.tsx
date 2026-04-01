@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useMemo, type FormEvent } from "react";
 import { api, type Alias, ApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
@@ -20,8 +20,23 @@ import {
   Shield,
   Palette,
   User,
+  AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+
+function getPasswordStrength(pw: string): { level: number; label: string; color: string } {
+  if (!pw) return { level: 0, label: "", color: "" };
+  let score = 0;
+  if (pw.length >= 6) score++;
+  if (pw.length >= 10) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { level: 1, label: "Weak", color: "bg-red-500" };
+  if (score <= 2) return { level: 2, label: "Fair", color: "bg-amber-500" };
+  if (score <= 3) return { level: 3, label: "Good", color: "bg-blue-500" };
+  return { level: 4, label: "Strong", color: "bg-emerald-500" };
+}
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -36,6 +51,8 @@ export default function SettingsPage() {
   const [showNewPw, setShowNewPw] = useState(false);
   const [pwLoading, setPwLoading] = useState(false);
   const [pwMessage, setPwMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const pwStrength = useMemo(() => getPasswordStrength(newPw), [newPw]);
 
   useEffect(() => {
     api
@@ -85,7 +102,7 @@ export default function SettingsPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-6 overflow-y-auto h-full scrollbar-thin">
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Manage your preferences and security
         </p>
@@ -107,7 +124,7 @@ export default function SettingsPage() {
                 variant={theme === value ? "default" : "outline"}
                 size="sm"
                 onClick={() => setTheme(value)}
-                className="gap-2 transition-all duration-200"
+                className="gap-2 rounded-xl transition-all duration-200"
               >
                 <Icon className="h-4 w-4" />
                 {label}
@@ -130,7 +147,7 @@ export default function SettingsPage() {
           {loading ? (
             <div className="space-y-2">
               {[1, 2].map((i) => (
-                <div key={i} className="h-10 bg-muted animate-pulse rounded-lg" />
+                <div key={i} className="h-10 bg-muted animate-pulse rounded-xl" />
               ))}
             </div>
           ) : aliases.length === 0 ? (
@@ -177,9 +194,13 @@ export default function SettingsPage() {
                             : "bg-destructive/10 text-destructive border-destructive/20"
                         }`}
                       >
-                        <div className={`h-4 w-4 rounded-full shrink-0 flex items-center justify-center ${pwMessage.type === "success" ? "bg-emerald-500" : "bg-destructive"}`}>
-                          {pwMessage.type === "success" && <Check className="h-2.5 w-2.5 text-white" />}
-                        </div>
+                        {pwMessage.type === "success" ? (
+                          <div className="h-4 w-4 rounded-full shrink-0 flex items-center justify-center bg-emerald-500">
+                            <Check className="h-2.5 w-2.5 text-white" />
+                          </div>
+                        ) : (
+                          <AlertCircle className="h-4 w-4 shrink-0" />
+                        )}
                         {pwMessage.text}
                       </div>
                     )}
@@ -228,6 +249,28 @@ export default function SettingsPage() {
                           {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                         </button>
                       </div>
+                      {newPw && (
+                        <div className="space-y-1.5 animate-in fade-in duration-200">
+                          <div className="flex gap-1 h-1">
+                            {[1, 2, 3, 4].map((i) => (
+                              <div
+                                key={i}
+                                className={`flex-1 rounded-full transition-all duration-300 ${
+                                  i <= pwStrength.level ? pwStrength.color : "bg-muted"
+                                }`}
+                              />
+                            ))}
+                          </div>
+                          <p className={`text-[11px] font-medium transition-colors ${
+                            pwStrength.level <= 1 ? "text-red-500" :
+                            pwStrength.level <= 2 ? "text-amber-500" :
+                            pwStrength.level <= 3 ? "text-blue-500" :
+                            "text-emerald-500"
+                          }`}>
+                            {pwStrength.label}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="confirm-pw" className="text-xs">
@@ -241,8 +284,18 @@ export default function SettingsPage() {
                         placeholder="Confirm new password"
                         className="rounded-xl"
                       />
+                      {confirmPw && newPw && confirmPw !== newPw && (
+                        <p className="text-[11px] text-destructive animate-in fade-in duration-200">
+                          Passwords do not match
+                        </p>
+                      )}
+                      {confirmPw && newPw && confirmPw === newPw && (
+                        <p className="text-[11px] text-emerald-500 animate-in fade-in duration-200 flex items-center gap-1">
+                          <Check className="h-3 w-3" /> Passwords match
+                        </p>
+                      )}
                     </div>
-                    <Button type="submit" size="sm" disabled={pwLoading || !newPw} className="rounded-xl">
+                    <Button type="submit" size="sm" disabled={pwLoading || !newPw || (confirmPw !== newPw)} className="rounded-xl">
                       {pwLoading ? (
                         <span className="flex items-center gap-2">
                           <span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />

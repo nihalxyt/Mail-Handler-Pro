@@ -24,6 +24,7 @@ function StatCard({
   icon: Icon,
   color,
   bg,
+  index,
 }: {
   label: string;
   value: number;
@@ -31,9 +32,13 @@ function StatCard({
   icon: typeof Users;
   color: string;
   bg: string;
+  index: number;
 }) {
   return (
-    <Card className="relative overflow-hidden group hover:shadow-md transition-shadow">
+    <Card
+      className="relative overflow-hidden group hover:shadow-md transition-all duration-200 animate-in fade-in slide-in-from-bottom-3"
+      style={{ animationDelay: `${index * 60}ms`, animationFillMode: "both" }}
+    >
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div>
@@ -41,7 +46,7 @@ function StatCard({
             <p className="text-2xl font-bold mt-1 tabular-nums">{value.toLocaleString()}</p>
             {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
           </div>
-          <div className={`p-2.5 rounded-xl ${bg}`}>
+          <div className={`p-2.5 rounded-xl ${bg} transition-transform duration-200 group-hover:scale-110`}>
             <Icon className={`h-5 w-5 ${color}`} />
           </div>
         </div>
@@ -79,7 +84,7 @@ export default function AdminDashboard() {
         <Skeleton className="h-8 w-48" />
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-24 rounded-xl animate-in fade-in duration-300" style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }} />
           ))}
         </div>
       </div>
@@ -88,13 +93,13 @@ export default function AdminDashboard() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 px-4">
+      <div className="flex flex-col items-center justify-center py-20 px-4 animate-in fade-in slide-in-from-bottom-4 duration-400">
         <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mb-4">
           <ShieldCheck className="h-8 w-8 text-destructive" />
         </div>
         <h3 className="text-lg font-semibold mb-1">Dashboard Error</h3>
         <p className="text-sm text-muted-foreground mb-4">{error}</p>
-        <Button variant="outline" onClick={fetchStats}>
+        <Button variant="outline" onClick={fetchStats} className="rounded-xl">
           <RefreshCw className="h-4 w-4 mr-2" /> Retry
         </Button>
       </div>
@@ -139,31 +144,31 @@ export default function AdminDashboard() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 overflow-y-auto h-full scrollbar-thin">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold">Admin Dashboard</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Admin Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-0.5">System overview and management</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={fetchStats} className="h-9 w-9">
+        <Button variant="ghost" size="icon" onClick={fetchStats} className="h-9 w-9 rounded-xl">
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {cards.map((c) => (
-          <StatCard key={c.label} {...c} />
+        {cards.map((c, i) => (
+          <StatCard key={c.label} {...c} index={i} />
         ))}
       </div>
 
       {Object.entries(stats || {}).length > 1 && (
-        <div className="space-y-3">
+        <div className="space-y-3 animate-in fade-in slide-in-from-bottom-3 duration-400" style={{ animationDelay: "500ms", animationFillMode: "both" }}>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Per-Bot Breakdown</h2>
           <div className="grid md:grid-cols-2 gap-4">
-            {Object.entries(stats || {}).map(([key, s]) => (
-              <Card key={key}>
+            {Object.entries(stats || {}).map(([key, s], i) => (
+              <Card key={key} className="animate-in fade-in slide-in-from-bottom-2 duration-300" style={{ animationDelay: `${550 + i * 80}ms`, animationFillMode: "both" }}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full bg-primary" />
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
                     {key === "bot1" ? "Bot 1" : "Bot 2"}
                   </CardTitle>
                 </CardHeader>
@@ -191,16 +196,16 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-3 gap-3">
-        <Button variant="outline" className="justify-between gap-2 h-12" onClick={() => navigate("/admin/users")}>
+      <div className="grid sm:grid-cols-3 gap-3 animate-in fade-in slide-in-from-bottom-3 duration-400" style={{ animationDelay: "700ms", animationFillMode: "both" }}>
+        <Button variant="outline" className="justify-between gap-2 h-12 rounded-xl" onClick={() => navigate("/admin/users")}>
           <span className="flex items-center gap-2"><Users className="h-4 w-4" /> Manage Users</span>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
         </Button>
-        <Button variant="outline" className="justify-between gap-2 h-12" onClick={() => navigate("/admin/aliases")}>
+        <Button variant="outline" className="justify-between gap-2 h-12 rounded-xl" onClick={() => navigate("/admin/aliases")}>
           <span className="flex items-center gap-2"><AtSign className="h-4 w-4" /> Manage Aliases</span>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
         </Button>
-        <Button variant="outline" className="justify-between gap-2 h-12" onClick={() => navigate("/admin/logs")}>
+        <Button variant="outline" className="justify-between gap-2 h-12 rounded-xl" onClick={() => navigate("/admin/logs")}>
           <span className="flex items-center gap-2"><Clock className="h-4 w-4" /> Activity Logs</span>
           <ArrowRight className="h-4 w-4 text-muted-foreground" />
         </Button>

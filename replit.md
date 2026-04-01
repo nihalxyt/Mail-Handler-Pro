@@ -112,12 +112,13 @@ Utility scripts package. Run scripts via `pnpm --filter @workspace/scripts run <
 
 React+Vite web email client branded as **ZayMail** with Tailwind CSS, shadcn/ui components, and React Router. Domain: `zayvex.cloud`.
 
-- Pages: Login (modern gradient UI, no "create account"), Inbox (paginated, search, filter, pull-to-refresh, swipe-to-delete), Mail Detail (full HTML rendering with inline images toggle, full-view mode, download/open-in-tab options), Settings (password change, theme toggle), Admin Panel (Dashboard, Users, Aliases, Logs)
+- Pages: Login (modern gradient UI with success animation, shake-on-error, no "create account"), Inbox (paginated, search, filter, pull-to-refresh, swipe-to-delete, unread blue dot indicator, staggered entry animations, hover quick-actions), Mail Detail (full HTML rendering with inline images toggle, full-view mode, download/open-in-tab, keyboard shortcuts: Escape/Backspace=back, S=star, D=delete, U=toggle read, F=full view), Settings (password change with 4-bar strength meter and match feedback, theme toggle), Admin Panel (Dashboard, Users, Aliases, Logs)
 - Auth: Cookie-based sessions via `/api/auth/*` endpoints (httpOnly JWT cookies)
 - Account switching: mail.tm-style dropdown with colored avatar initials per alias, active indicator, switch with loading state
 - Theme: Indigo/violet color palette with light/dark/system modes, glass effects, gradient branding, custom scrollbar styling
-- Admin panel: Dashboard with stats cards, user management (role/status changes), alias management (activate/deactivate, extend expiry, reset password), activity logs with filtering
+- Admin panel: Dashboard with staggered animated stat cards, per-bot breakdown, user management (role/status changes), alias management (activate/deactivate, extend expiry, reset password, delete), activity logs with filtering — all pages have staggered entry animations
 - Toast notifications: sonner for all admin actions and user feedback
+- Error handling: All optimistic updates have rollback on API failure (star, read, delete, swipe actions)
 - API proxy: Vite dev server proxies `/api` to api-server on port 8080
 - Responsive: Collapsible desktop sidebar (localStorage-persisted) + mobile bottom nav layout
 - Credit footer: "Built by NiHAL @N2X4E" in sidebar and login page

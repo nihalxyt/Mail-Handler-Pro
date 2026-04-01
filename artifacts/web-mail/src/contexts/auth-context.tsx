@@ -9,6 +9,7 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
+  adminLogin: (email: string, password: string, adminKey?: string) => Promise<void>;
   logout: () => Promise<void>;
   switchAccount: (email: string) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -48,6 +49,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const adminLogin = useCallback(async (email: string, password: string, adminKey?: string) => {
+    setState((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const res = await api.adminLogin(email, password, adminKey);
+      setState({ user: res.user, loading: false, error: null });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Admin login failed";
+      setState({ user: null, loading: false, error: msg });
+      throw err;
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
@@ -68,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshUser]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, switchAccount, refreshUser }}>
+    <AuthContext.Provider value={{ ...state, login, adminLogin, logout, switchAccount, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

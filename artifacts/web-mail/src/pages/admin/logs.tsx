@@ -105,11 +105,11 @@ export default function AdminLogs() {
     <div className="flex flex-col h-full">
       <div className="sticky top-0 z-10 bg-background/80 glass border-b px-3 sm:px-4 py-3 space-y-3">
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => navigate("/admin")}>
+          <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-xl" onClick={() => navigate("/admin")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <h1 className="text-lg font-semibold flex-1">Activity Logs</h1>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={fetchLogs}>
+          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl" onClick={fetchLogs}>
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
@@ -120,12 +120,12 @@ export default function AdminLogs() {
               placeholder="Search logs..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9"
+              className="pl-9 h-9 rounded-xl"
             />
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0">
+              <Button variant="outline" size="sm" className="gap-1.5 h-9 shrink-0 rounded-xl">
                 <Filter className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">{ACTION_FILTERS.find((f) => f.value === actionFilter)?.label}</span>
               </Button>
@@ -145,8 +145,8 @@ export default function AdminLogs() {
         {loading ? (
           <div className="divide-y">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 sm:p-4">
-                <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+              <div key={i} className="flex items-start gap-3 p-3 sm:p-4 animate-in fade-in duration-300" style={{ animationDelay: `${i * 50}ms`, animationFillMode: "both" }}>
+                <Skeleton className="h-8 w-8 rounded-lg shrink-0" />
                 <div className="flex-1 space-y-1">
                   <Skeleton className="h-4 w-48" />
                   <Skeleton className="h-3 w-32" />
@@ -156,7 +156,7 @@ export default function AdminLogs() {
             ))}
           </div>
         ) : logs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in slide-in-from-bottom-4 duration-400">
             <ScrollText className="h-12 w-12 text-muted-foreground/30 mb-3" />
             <p className="text-muted-foreground">No activity logs yet</p>
           </div>
@@ -167,7 +167,11 @@ export default function AdminLogs() {
               const colorClasses = actionColors[log.action] || "text-muted-foreground bg-muted";
 
               return (
-                <div key={i} className="flex items-start gap-3 p-3 sm:p-4 hover:bg-accent/20 transition-colors">
+                <div
+                  key={i}
+                  className="flex items-start gap-3 p-3 sm:p-4 hover:bg-accent/20 transition-colors animate-in fade-in slide-in-from-bottom-2"
+                  style={{ animationDelay: `${Math.min(i * 30, 300)}ms`, animationFillMode: "both" }}
+                >
                   <div className={cn("p-2 rounded-lg shrink-0", colorClasses)}>
                     <IconComp className="h-4 w-4" />
                   </div>

@@ -1,8 +1,9 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { Toaster } from "sonner";
 import LoginPage from "@/pages/login";
+import AdminLoginPage from "@/pages/admin-login";
 import InboxPage from "@/pages/inbox";
 import MailDetailPage from "@/pages/mail-detail";
 import SettingsPage from "@/pages/settings";
@@ -27,6 +28,15 @@ function LoadingScreen() {
   );
 }
 
+function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const isAdmin = user?.role && ["admin", "moderator", "super_admin"].includes(user.role);
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
 function AuthenticatedApp() {
   return (
     <AppLayout>
@@ -34,10 +44,11 @@ function AuthenticatedApp() {
         <Route path="/" element={<InboxPage />} />
         <Route path="/mail/:id" element={<MailDetailPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/users" element={<AdminUsers />} />
-        <Route path="/admin/aliases" element={<AdminAliases />} />
-        <Route path="/admin/logs" element={<AdminLogs />} />
+        <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+        <Route path="/admin/users" element={<AdminGuard><AdminUsers /></AdminGuard>} />
+        <Route path="/admin/aliases" element={<AdminGuard><AdminAliases /></AdminGuard>} />
+        <Route path="/admin/logs" element={<AdminGuard><AdminLogs /></AdminGuard>} />
+        <Route path="/admin-login" element={<Navigate to="/admin" replace />} />
         <Route
           path="*"
           element={
@@ -56,8 +67,18 @@ function AuthenticatedApp() {
 
 function AppRouter() {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) return <LoadingScreen />;
+
+  if (location.pathname === "/admin-login") {
+    if (user) {
+      const isAdmin = user.role && ["admin", "moderator", "super_admin"].includes(user.role);
+      if (isAdmin) return <Navigate to="/admin" replace />;
+    }
+    return <AdminLoginPage />;
+  }
+
   if (!user) return <LoginPage />;
   return <AuthenticatedApp />;
 }

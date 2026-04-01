@@ -120,6 +120,13 @@ export const api = {
     });
   },
 
+  adminLogin(email: string, password: string, adminKey?: string) {
+    return request<LoginResponse>("/auth/admin-login", {
+      method: "POST",
+      body: JSON.stringify({ email, password, adminKey }),
+    });
+  },
+
   logout() {
     return request<{ success: boolean }>("/auth/logout", { method: "POST" });
   },
@@ -247,6 +254,13 @@ export const api = {
   adminResetPassword(email: string, dbKey: string) {
     return request<{ success: boolean; newPassword: string }>(`/admin/aliases/${encodeURIComponent(email)}/reset-password`, {
       method: "POST",
+      body: JSON.stringify({ dbKey }),
+    });
+  },
+
+  adminDeleteAlias(email: string, dbKey: string) {
+    return request<{ success: boolean }>(`/admin/aliases/${encodeURIComponent(email)}`, {
+      method: "DELETE",
       body: JSON.stringify({ dbKey }),
     });
   },

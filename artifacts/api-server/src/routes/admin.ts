@@ -517,6 +517,44 @@ router.post("/admin/aliases/bulk-set-passwords", ...adminAuth, async (req, res) 
   }
 });
 
+router.delete("/admin/aliases/:email", ...adminAuth, async (req, res) => {
+  try {
+    const email = decodeURIComponent(String(req.params.email)).toLowerCase();
+    const { dbKey } = req.body as { dbKey: string };
+
+    if (!isValidDbKey(dbKey)) {
+      res.status(400).json({ error: "Invalid database" });
+      return;
+    }
+
+    const db = getDb(dbKey);
+    if (!db) {
+      res.status(400).json({ error: "Database not available" });
+      return;
+    }
+
+    const alias = await db.collection<AliasDoc>("aliases").findOne({ alias_email: email });
+    if (!alias) {
+      res.status(404).json({ error: "Alias not found" });
+      return;
+    }
+
+    await db.collection("aliases").deleteOne({ alias_email: email });
+    await db.collection("mail_logs").updateMany(
+      { alias_email: email },
+      { $set: { deleted: true, deleted_at: new Date() } }
+    );
+
+    const admin = getAdminUser(req);
+    await logAdminAction(dbKey, admin, "alias_delete", "alias", email, `Permanently deleted alias and ${alias.tg_user_id} mails`);
+
+    res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, "Alias delete error");
+    res.status(500).json({ error: "Failed to delete alias" });
+  }
+});
+
 router.get("/admin/logs", ...adminAuth, async (req, res) => {
   try {
     const page = String(req.query.page || "0");

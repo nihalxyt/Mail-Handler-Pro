@@ -1,6 +1,6 @@
 export default {
   async email(message, env) {
-    const API_URL = (env.API_ENDPOINT || "https://zayvex.cloud").replace(/\/$/, "");
+    const API_URL = (env.API_ENDPOINT || "https://mail.zayvex.cloud").replace(/\/$/, "");
     const API_KEY = env.INCOMING_MAIL_API_KEY || "";
     const MAX_BODY_SIZE = 512 * 1024;
 

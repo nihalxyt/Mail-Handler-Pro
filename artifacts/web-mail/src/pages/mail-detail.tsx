@@ -78,6 +78,7 @@ export default function MailDetailPage() {
   const [error, setError] = useState("");
   const [fullView, setFullView] = useState(false);
   const [showImages, setShowImages] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const fetchMail = useCallback(async () => {
@@ -97,6 +98,26 @@ export default function MailDetailPage() {
   useEffect(() => {
     fetchMail();
   }, [fetchMail]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "Escape" || e.key === "Backspace") {
+        e.preventDefault();
+        navigate("/");
+      } else if (e.key === "s" && !e.metaKey && !e.ctrlKey) {
+        handleStar();
+      } else if (e.key === "Delete" || (e.key === "d" && !e.metaKey && !e.ctrlKey)) {
+        handleDelete();
+      } else if (e.key === "u" && !e.metaKey && !e.ctrlKey) {
+        handleToggleRead();
+      } else if (e.key === "f" && !e.metaKey && !e.ctrlKey) {
+        setFullView((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!mail?.body || !iframeRef.current) return;
@@ -213,13 +234,22 @@ ul, ol { padding-left: 24px; }
     if (!mail) return;
     const newVal = !mail.read;
     setMail({ ...mail, read: newVal });
-    await api.patchMail(mail.id, { read: newVal });
+    try {
+      await api.patchMail(mail.id, { read: newVal });
+    } catch {
+      setMail({ ...mail, read: !newVal });
+    }
   };
 
   const handleDelete = async () => {
-    if (!mail) return;
-    await api.patchMail(mail.id, { deleted: true });
-    navigate("/");
+    if (!mail || deleting) return;
+    setDeleting(true);
+    try {
+      await api.patchMail(mail.id, { deleted: true });
+      navigate("/");
+    } catch {
+      setDeleting(false);
+    }
   };
 
   const hasHtmlImages = mail?.body ? /<img\s/i.test(mail.body) : false;
@@ -228,7 +258,7 @@ ul, ol { padding-left: 24px; }
     return (
       <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 animate-in fade-in duration-300">
         <div className="flex items-center gap-3">
-          <Skeleton className="h-9 w-9 rounded-lg" />
+          <Skeleton className="h-9 w-9 rounded-xl" />
           <Skeleton className="h-5 w-24" />
         </div>
         <Skeleton className="h-8 w-3/4" />
@@ -268,14 +298,19 @@ ul, ol { padding-left: 24px; }
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-300">
       <div className="sticky top-0 z-10 bg-background/80 glass border-b px-3 sm:px-4 py-2 flex items-center gap-1.5 sm:gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 shrink-0 rounded-lg"
-          onClick={() => navigate("/")}
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-xl"
+              onClick={() => navigate("/")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Back (Esc)</TooltipContent>
+        </Tooltip>
         <div className="flex-1" />
         {hasHtmlImages && (
           <Tooltip>
@@ -283,7 +318,7 @@ ul, ol { padding-left: 24px; }
               <Button
                 variant={showImages ? "secondary" : "ghost"}
                 size="icon"
-                className="h-9 w-9 rounded-lg"
+                className="h-9 w-9 rounded-xl"
                 onClick={() => setShowImages(!showImages)}
               >
                 <Image className="h-4 w-4" />
@@ -297,44 +332,59 @@ ul, ol { padding-left: 24px; }
             <Button
               variant={fullView ? "secondary" : "ghost"}
               size="icon"
-              className="h-9 w-9 rounded-lg"
+              className="h-9 w-9 rounded-xl"
               onClick={() => setFullView(!fullView)}
             >
               {fullView ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
           </TooltipTrigger>
-          <TooltipContent>{fullView ? "Compact view" : "Full view"}</TooltipContent>
+          <TooltipContent>{fullView ? "Compact (F)" : "Full view (F)"}</TooltipContent>
         </Tooltip>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-lg"
-          onClick={handleToggleRead}
-          title={mail.read ? "Mark as unread" : "Mark as read"}
-        >
-          {mail.read ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-lg transition-all duration-150 active:scale-90"
-          onClick={handleStar}
-        >
-          <Star
-            className={cn(
-              "h-4 w-4 transition-all duration-200",
-              mail.starred ? "fill-amber-400 text-amber-400 scale-110" : ""
-            )}
-          />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10 transition-colors"
-          onClick={handleDelete}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-xl"
+              onClick={handleToggleRead}
+            >
+              {mail.read ? <MailOpen className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{mail.read ? "Mark unread (U)" : "Mark read (U)"}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-xl transition-all duration-150 active:scale-90"
+              onClick={handleStar}
+            >
+              <Star
+                className={cn(
+                  "h-4 w-4 transition-all duration-200",
+                  mail.starred ? "fill-amber-400 text-amber-400 scale-110" : ""
+                )}
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{mail.starred ? "Unstar (S)" : "Star (S)"}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 rounded-xl text-destructive hover:text-destructive hover:bg-destructive/10 transition-colors"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Delete (D)</TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
@@ -408,7 +458,7 @@ ul, ol { padding-left: 24px; }
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 text-xs gap-1.5 rounded-lg hover:bg-muted"
+                className="h-8 text-xs gap-1.5 rounded-xl hover:bg-muted"
                 onClick={() => {
                   const blob = new Blob([mail.body], { type: "text/html" });
                   const url = URL.createObjectURL(blob);
@@ -425,7 +475,7 @@ ul, ol { padding-left: 24px; }
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 text-xs gap-1.5 rounded-lg hover:bg-muted"
+                className="h-8 text-xs gap-1.5 rounded-xl hover:bg-muted"
                 onClick={() => {
                   const blob = new Blob([mail.body], { type: "text/html" });
                   const url = URL.createObjectURL(blob);
