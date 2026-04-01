@@ -127,6 +127,13 @@ export const api = {
     });
   },
 
+  tokenLogin(token: string) {
+    return request<LoginResponse & { type?: string }>("/auth/token-login", {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    });
+  },
+
   logout() {
     return request<{ success: boolean }>("/auth/logout", { method: "POST" });
   },

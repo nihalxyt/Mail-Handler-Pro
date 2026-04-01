@@ -66,7 +66,7 @@ Express 5 API server with MongoDB-backed email inbox API. Routes live in `src/ro
 - Utilities: `src/lib/sanitize.ts` — regex escaping, search query sanitization, dbKey validation
 - Routes:
   - `src/routes/health.ts` — `GET /api/healthz`
-  - `src/routes/auth.ts` — `POST /api/auth/login` (with fingerprint + CSRF token issuance), `POST /api/auth/logout`, `GET /api/auth/me` (refreshes CSRF token), `POST /api/auth/switch`
+  - `src/routes/auth.ts` — `POST /api/auth/login` (with fingerprint + CSRF token issuance, specific error codes: EMAIL_NOT_FOUND/WRONG_PASSWORD/NO_PASSWORD), `POST /api/auth/logout`, `GET /api/auth/me` (refreshes CSRF token), `POST /api/auth/switch`, `POST /api/auth/create-access-token` (bot-only, API key auth, generates single-use 5-min login tokens stored in MongoDB `login_tokens` collection), `POST /api/auth/token-login` (exchanges token for JWT session, supports user/admin types)
   - `src/routes/inbox.ts` — `GET /api/inbox` (paginated), `GET /api/inbox/stats`
   - `src/routes/mail.ts` — `GET /api/mail/:id`, `PATCH /api/mail/:id`, `POST /api/mail/batch`
   - `src/routes/aliases.ts` — `GET /api/aliases`, `PATCH /api/aliases/:email/password`
@@ -81,7 +81,8 @@ Express 5 API server with MongoDB-backed email inbox API. Routes live in `src/ro
 - `BOT2_MONGO_URI` — MongoDB connection string for Bot2
 - `BOT1_DB_NAME` / `BOT2_DB_NAME` — Database names (default: `mailbot_pro`)
 - `JWT_SECRET` or `SESSION_SECRET` — Secret for JWT signing
-- `INCOMING_MAIL_API_KEY` — API key for Cloudflare worker incoming mail endpoint
+- `INCOMING_MAIL_API_KEY` — API key for incoming mail endpoint and bot token generation
+- `ADMIN_SECRET_KEY` — Optional admin secret key for admin login form
 
 ### `lib/db` (`@workspace/db`)
 
@@ -112,7 +113,7 @@ Utility scripts package. Run scripts via `pnpm --filter @workspace/scripts run <
 
 React+Vite web email client branded as **ZayMail** with Tailwind CSS, shadcn/ui components, and React Router. Domain: `zayvex.cloud`.
 
-- Pages: Login (modern gradient UI with success animation, shake-on-error, no "create account"), Inbox (paginated, search, filter, pull-to-refresh, swipe-to-delete, unread blue dot indicator, staggered entry animations, hover quick-actions), Mail Detail (full HTML rendering with inline images toggle, full-view mode, download/open-in-tab, keyboard shortcuts: Escape/Backspace=back, S=star, D=delete, U=toggle read, F=full view), Settings (password change with 4-bar strength meter and match feedback, theme toggle), Admin Panel (Dashboard, Users, Aliases, Logs)
+- Pages: Login (modern gradient UI with success animation, shake-on-error, no admin link, specific error messages for email-not-found/wrong-password/no-password), Token Login (`/auth/token?t=` — auto-login via bot-generated links with loading/success/error states), Admin Login (only accessible via bot-generated token links, not visible on public login page), Inbox (paginated, search, filter, pull-to-refresh, swipe-to-delete, unread blue dot indicator, staggered entry animations, hover quick-actions), Mail Detail (full HTML rendering with inline images toggle, full-view mode, download/open-in-tab, keyboard shortcuts: Escape/Backspace=back, S=star, D=delete, U=toggle read, F=full view), Settings (password change with 4-bar strength meter and match feedback, theme toggle), Admin Panel (Dashboard, Users, Aliases, Logs)
 - Auth: Cookie-based sessions via `/api/auth/*` endpoints (httpOnly JWT cookies)
 - Account switching: mail.tm-style dropdown with colored avatar initials per alias, active indicator, switch with loading state
 - Theme: Indigo/violet color palette with light/dark/system modes, glass effects, gradient branding, custom scrollbar styling
@@ -132,6 +133,7 @@ Unified Python script running two Telegram email-forwarding bots simultaneously 
 - **Dual bot**: Both bots share identical functionality but use separate MongoDB databases, alias caches, and Telegram sessions
 - **SMTP server**: aiosmtpd replaces Gmail/IMAP polling; incoming emails route to the correct bot/user automatically
 - **Web password management**: Auto-generates bcrypt-hashed passwords on alias creation; users can view/reset passwords via "Web Password" button in user panel
+- **Web login links**: Bot generates single-use 5-minute login links via API's `/api/auth/create-access-token` endpoint. Users tap "Login Link" in bot → get a URL → auto-logged in on web. Admins get admin-type tokens for direct admin panel access. Admin can also send login links to any user from User Management panel.
 - **uvloop**: High-performance event loop (falls back to default asyncio if not installed)
 - **TTLCache**: In-memory LRU+TTL cache (OrderedDict-based) for users, counts, and aliases — minimizes MongoDB hits
 - **Cross-bot email uniqueness**: Same email address cannot be assigned in both bots simultaneously
@@ -141,7 +143,9 @@ Unified Python script running two Telegram email-forwarding bots simultaneously 
 `telethon`, `motor`, `aiosmtpd`, `python-dotenv`, `uvloop`, `bcrypt` (optional, falls back to sha256)
 
 ### Config
-- Bot credentials, MongoDB URIs, and super admin IDs are set via environment variables or hardcoded defaults
+- Bot credentials, MongoDB URIs, and super admin IDs are set via environment variables (all required, no hardcoded defaults)
+- `API_BASE_URL` — API server base URL for token generation (default: `https://mail.zayvex.cloud/api`)
+- `INCOMING_MAIL_API_KEY` — API key for authenticating with the API server (used for both email ingestion and login token generation)
 - SMTP binds to `SMTP_HOST`/`SMTP_PORT` (default `0.0.0.0:25`)
 - Session files: `bot1_session`, `bot2_session`
 - Timezone: `Asia/Dhaka`
@@ -152,6 +156,7 @@ Unified Python script running two Telegram email-forwarding bots simultaneously 
 - **`mail_logs`**: `_id` (SHA256 dedupe_key), `alias_email`, `tg_user_id`, `from`, `subject`, `body`, `snippet`, `read`, `starred`, `deleted`, `bot`, timestamps
 - **`settings`** and **`statistics`**: System configuration and aggregated data
 - **`admin_logs`**: Admin action audit trail with `action`, `adminTgId`, `adminName`, `targetType`, `targetId`, `details`, `dbKey`, `timestamp`
+- **`login_tokens`**: Single-use web login tokens with `_id` (SHA256 hash), `token_hash`, `alias_email`, `tg_user_id`, `dbKey`, `type` (user/admin), `created_at`, `expires_at` (5 min), `used`, `used_at`
 
 ## Cloudflare Email Worker (`cloudflare_email_worker.js`)
 

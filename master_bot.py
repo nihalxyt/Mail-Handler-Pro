@@ -24,6 +24,7 @@ try:
 except ImportError:
     _UVLOOP = False
 
+import aiohttp
 from telethon import TelegramClient, events, Button
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -110,6 +111,8 @@ BOT1_SUPER_ADMIN_IDS = _GLOBAL_SUPER_ADMIN_IDS
 BOT2_SUPER_ADMIN_IDS = _GLOBAL_SUPER_ADMIN_IDS
 
 WEB_BASE_URL = os.environ.get("WEB_BASE_URL", "https://mail.zayvex.cloud")
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://mail.zayvex.cloud/api")
+API_SECRET_KEY = os.environ.get("INCOMING_MAIL_API_KEY", os.environ.get("SESSION_SECRET", ""))
 
 UTC      = timezone.utc
 LOCAL_TZ = ZoneInfo(os.environ.get("TIMEZONE", "Asia/Dhaka"))
@@ -507,6 +510,9 @@ def user_detail_kb(tg_id, status, role="user"):
         Button.inline("🔑 Web Logins", cb("UM", "weblogins", str(tg_id))),
         Button.inline("🔄 Reset All PW", cb("UM", "resetallpw", str(tg_id)))
     ])
+    buttons.append([
+        Button.inline("🌐 Send Login Link", cb("UM", "sendlogin", str(tg_id)))
+    ])
     if status == "pending":
         buttons.append([
             Button.inline("✅ Approve", cb("UM", "approve", str(tg_id))),
@@ -585,8 +591,9 @@ def user_main_kb():
          Button.inline("📊 Statistics", cb("M", "stats"))],
         [Button.inline("🔑 Web Password", cb("M", "webpass")),
          Button.inline("🔐 Change Password", cb("M", "chgpass"))],
-        [Button.inline("⚙️ Settings", cb("M", "settings")),
-         Button.inline("ℹ️ Help", cb("M", "help"))],
+        [Button.inline("🌐 Login Link", cb("M", "weblogin")),
+         Button.inline("⚙️ Settings", cb("M", "settings"))],
+        [Button.inline("ℹ️ Help", cb("M", "help"))],
     ]
 
 def user_reply_kb():
@@ -929,6 +936,30 @@ async def handle_web_password_callback(event, parts, col_aliases, alias_token_ca
                 [Button.inline("⬅️ Back", cb("M", "back"))]
             ]
         )
+
+
+async def generate_web_login_link(alias_email: str, token_type: str = "user") -> str:
+    if not API_SECRET_KEY:
+        return ""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{API_BASE_URL}/auth/create-access-token",
+                json={"email": alias_email, "type": token_type},
+                headers={"X-API-Key": API_SECRET_KEY, "Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    raw_token = data.get("token", "")
+                    if raw_token:
+                        return f"{WEB_BASE_URL}/auth/token?t={raw_token}"
+                else:
+                    body = await resp.text()
+                    logger.warning(f"Failed to create access token: {resp.status} {body}")
+    except Exception as e:
+        logger.error(f"Error generating web login link: {e}")
+    return ""
 
 
 async def show_admin_inbox(event, col_logs, super_admin_ids, page=0, edit=False):
@@ -1810,6 +1841,33 @@ def make_callback_handler(
                         pass
                 await event.answer(f"✅ Reset {count} passwords", alert=True)
                 return await show_user_detail(event, tg_id, col_users, col_aliases, col_logs, user_cache)
+            elif action == "sendlogin":
+                aliases = await col_aliases.find({"tg_user_id": tg_id, "active": True}).to_list(50)
+                if not aliases:
+                    return await event.answer("❌ No active emails for this user.", alert=True)
+                sent_count = 0
+                link_texts = []
+                for a in aliases:
+                    link = await generate_web_login_link(a["alias_email"], "user")
+                    if link:
+                        link_texts.append(f"📧 `{a['alias_email']}`\n🔗 [Login Link]({link})")
+                        sent_count += 1
+                if sent_count > 0:
+                    try:
+                        await bot_instance.send_message(
+                            tg_id,
+                            f"🌐 **Web Login Links**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                            + "\n\n".join(link_texts) +
+                            "\n\n⏱ Links expire in **5 minutes**.\n"
+                            "🔒 Single-use — each works only once.",
+                            link_preview=False,
+                        )
+                    except Exception:
+                        pass
+                    await event.answer(f"✅ Sent {sent_count} login link(s) to user", alert=True)
+                else:
+                    await event.answer("❌ Could not generate login links. Check API connection.", alert=True)
+                return await show_user_detail(event, tg_id, col_users, col_aliases, col_logs, user_cache)
             elif action == "delconfirm":
                 u = await cached_find_user(tg_id, col_users, user_cache)
                 uname = u.get("name", "Unknown") if u else "Unknown"
@@ -2074,6 +2132,40 @@ def make_callback_handler(
                     "Select which email's password to change:",
                     buttons=btns
                 )
+            elif action == "weblogin":
+                aliases = await col_aliases.find({"tg_user_id": event.sender_id, "active": True}).to_list(50)
+                if not aliases:
+                    return await event.answer("❌ No active emails.", alert=True)
+                if len(aliases) == 1:
+                    alias_email = aliases[0]["alias_email"]
+                    is_adm = await _is_admin()
+                    link_type = "admin" if is_adm else "user"
+                    link = await generate_web_login_link(alias_email, link_type)
+                    if not link:
+                        return await event.answer("❌ Could not generate login link. Check API connection.", alert=True)
+                    return await event.edit(
+                        f"🌐 **Web Login Link**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"📧 Email: `{alias_email}`\n\n"
+                        f"🔗 [Click here to login]({link})\n\n"
+                        "⏱ This link expires in **5 minutes**.\n"
+                        "🔒 Single-use — works only once.",
+                        buttons=[
+                            [Button.url("🌐 Open Web Login", link)],
+                            [Button.inline("🔄 New Link", cb("M", "weblogin"))],
+                            [Button.inline("⬅️ Back", cb("M", "back"))],
+                        ],
+                        link_preview=False,
+                    )
+                btns = []
+                for a in aliases:
+                    token = sha256(a["alias_email"])[:12]
+                    btns.append([Button.inline(f"🌐 {short(a['alias_email'], 28)}", cb("WL", token))])
+                btns.append([Button.inline("⬅️ Back", cb("M", "back"))])
+                return await event.edit(
+                    "🌐 **Generate Login Link**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "Select which email to generate a web login link for:",
+                    buttons=btns,
+                )
             elif action == "settings":
                 return await show_user_settings(event, col_users, user_cache, edit=True)
             elif action == "help":
@@ -2101,6 +2193,33 @@ def make_callback_handler(
                 "Send your **new password** (min 8 characters):\n"
                 "Or type `generate` to auto-generate one.",
                 buttons=[[Button.inline("❌ Cancel", cb("M", "back"))]]
+            )
+
+        if parts[0] == "WL":
+            token = parts[1] if len(parts) > 1 else ""
+            alias_email = alias_token_cache_dict.get(token)
+            if not alias_email:
+                return await event.answer("❌ Email not found. Try refreshing.", alert=True)
+            alias = await col_aliases.find_one({"alias_email": alias_email, "tg_user_id": event.sender_id})
+            if not alias:
+                return await event.answer("❌ Not your email.", alert=True)
+            is_adm = await _is_admin()
+            link_type = "admin" if is_adm else "user"
+            link = await generate_web_login_link(alias_email, link_type)
+            if not link:
+                return await event.answer("❌ Could not generate login link. Check API connection.", alert=True)
+            return await event.edit(
+                f"🌐 **Web Login Link**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📧 Email: `{alias_email}`\n\n"
+                f"🔗 [Click here to login]({link})\n\n"
+                "⏱ This link expires in **5 minutes**.\n"
+                "🔒 Single-use — works only once.",
+                buttons=[
+                    [Button.url("🌐 Open Web Login", link)],
+                    [Button.inline("🔄 New Link", cb("WL", token))],
+                    [Button.inline("⬅️ Back", cb("M", "back"))],
+                ],
+                link_preview=False,
             )
 
         if parts[0] == "WP":

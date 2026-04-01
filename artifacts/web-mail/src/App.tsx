@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/contexts/theme-context";
 import { Toaster } from "sonner";
 import LoginPage from "@/pages/login";
 import AdminLoginPage from "@/pages/admin-login";
+import TokenLoginPage from "@/pages/token-login";
 import InboxPage from "@/pages/inbox";
 import MailDetailPage from "@/pages/mail-detail";
 import SettingsPage from "@/pages/settings";
@@ -70,6 +71,10 @@ function AppRouter() {
   const location = useLocation();
 
   if (loading) return <LoadingScreen />;
+
+  if (location.pathname === "/auth/token") {
+    return <TokenLoginPage />;
+  }
 
   if (location.pathname === "/admin-login") {
     if (user) {

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { findAliasByEmail, findAllAliasesByTgUser } from "../lib/mongo";
+import crypto from "node:crypto";
+import { findAliasByEmail, findAllAliasesByTgUser, getDb, getAllDbKeys } from "../lib/mongo";
 import {
   signToken,
   setTokenCookie,
@@ -13,6 +14,26 @@ import {
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+const INCOMING_API_KEY =
+  process.env["INCOMING_MAIL_API_KEY"] || process.env["SESSION_SECRET"] || "";
+
+function botApiKeyAuth(
+  req: import("express").Request,
+  res: import("express").Response,
+  next: import("express").NextFunction
+): void {
+  const key = req.headers["x-api-key"];
+  if (!INCOMING_API_KEY || !key || key !== INCOMING_API_KEY) {
+    res.status(403).json({ error: "Invalid API key" });
+    return;
+  }
+  next();
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
 
 router.post("/auth/login", async (req, res) => {
   try {
@@ -38,7 +59,7 @@ router.post("/auth/login", async (req, res) => {
 
     const result = await findAliasByEmail(email.trim());
     if (!result) {
-      res.status(401).json({ error: "Invalid email or password" });
+      res.status(401).json({ error: "No account found with this email", code: "EMAIL_NOT_FOUND" });
       return;
     }
 
@@ -47,13 +68,14 @@ router.post("/auth/login", async (req, res) => {
     if (!alias.password) {
       res.status(401).json({
         error: "No web password set. Use the Telegram bot to generate one.",
+        code: "NO_PASSWORD",
       });
       return;
     }
 
     const valid = await bcrypt.compare(password, alias.password);
     if (!valid) {
-      res.status(401).json({ error: "Invalid email or password" });
+      res.status(401).json({ error: "Incorrect password. Please try again.", code: "WRONG_PASSWORD" });
       return;
     }
 
@@ -318,6 +340,209 @@ router.post("/auth/switch", authMiddleware, async (req, res) => {
     });
   } catch (err) {
     logger.error({ err }, "Switch error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/auth/create-access-token", botApiKeyAuth, async (req, res) => {
+  try {
+    const { email, type } = req.body as {
+      email?: string;
+      type?: "user" | "admin";
+    };
+
+    if (!email || typeof email !== "string") {
+      res.status(400).json({ error: "Email is required" });
+      return;
+    }
+
+    const tokenType = type === "admin" ? "admin" : "user";
+
+    const result = await findAliasByEmail(email.trim());
+    if (!result) {
+      res.status(404).json({ error: "Alias not found" });
+      return;
+    }
+
+    const { alias, dbKey } = result;
+
+    if (!alias.active) {
+      res.status(403).json({ error: "Alias is deactivated" });
+      return;
+    }
+
+    if (alias.expires_at && new Date(alias.expires_at) < new Date()) {
+      res.status(403).json({ error: "Alias has expired" });
+      return;
+    }
+
+    if (tokenType === "admin") {
+      const db = getDb(dbKey);
+      if (!db) {
+        res.status(500).json({ error: "Database not available" });
+        return;
+      }
+      const userDoc = await db.collection("users").findOne({ tg_user_id: alias.tg_user_id });
+      const role = userDoc?.role || "user";
+      if (!["admin", "moderator", "super_admin"].includes(role)) {
+        res.status(403).json({ error: "User is not an admin" });
+        return;
+      }
+    }
+
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashToken(rawToken);
+
+    const db = getDb(dbKey);
+    if (!db) {
+      res.status(500).json({ error: "Database not available" });
+      return;
+    }
+
+    await db.collection("login_tokens").deleteMany({
+      alias_email: alias.alias_email,
+      type: tokenType,
+    });
+
+    await db.collection("login_tokens").insertOne({
+      _id: tokenHash,
+      token_hash: tokenHash,
+      alias_email: alias.alias_email,
+      tg_user_id: alias.tg_user_id,
+      dbKey,
+      type: tokenType,
+      created_at: new Date(),
+      expires_at: new Date(Date.now() + 5 * 60 * 1000),
+      used: false,
+    });
+
+    logger.info({ email: alias.alias_email, type: tokenType }, "Access token created");
+
+    res.json({
+      success: true,
+      token: rawToken,
+      expiresIn: 300,
+    });
+  } catch (err) {
+    logger.error({ err }, "Create access token error");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/auth/token-login", async (req, res) => {
+  try {
+    const { token } = req.body as { token?: string };
+
+    if (!token || typeof token !== "string" || token.length !== 64) {
+      res.status(400).json({ error: "Invalid token" });
+      return;
+    }
+
+    const tokenHash = hashToken(token);
+    const now = new Date();
+
+    let tokenDoc: Record<string, unknown> | null = null;
+    let foundDbKey: "bot1" | "bot2" | null = null;
+
+    for (const key of getAllDbKeys()) {
+      const db = getDb(key);
+      if (!db) continue;
+      const doc = await db.collection("login_tokens").findOneAndUpdate(
+        {
+          _id: tokenHash,
+          used: false,
+          expires_at: { $gt: now },
+        },
+        { $set: { used: true, used_at: now } },
+        { returnDocument: "before" }
+      );
+      if (doc) {
+        tokenDoc = doc as Record<string, unknown>;
+        foundDbKey = key;
+        break;
+      }
+    }
+
+    if (!tokenDoc || !foundDbKey) {
+      res.status(401).json({ error: "Invalid, expired, or already used login link. Request a new one from the bot." });
+      return;
+    }
+
+    const aliasEmail = tokenDoc.alias_email as string;
+    const aliasResult = await findAliasByEmail(aliasEmail);
+    if (!aliasResult) {
+      res.status(401).json({ error: "Account no longer exists" });
+      return;
+    }
+
+    const { alias, dbKey } = aliasResult;
+
+    if (!alias.active) {
+      res.status(403).json({ error: "This email alias is deactivated" });
+      return;
+    }
+
+    if (alias.expires_at && new Date(alias.expires_at) < now) {
+      res.status(403).json({ error: "This email alias has expired" });
+      return;
+    }
+
+    const tokenType = tokenDoc.type as string;
+    const isAdminToken = tokenType === "admin";
+
+    const userDb = getDb(dbKey);
+    let role = "user";
+    if (userDb) {
+      const userDoc = await userDb.collection("users").findOne({ tg_user_id: alias.tg_user_id });
+      if (userDoc) role = (userDoc.role as string) || "user";
+    }
+
+    if (isAdminToken && !["admin", "moderator", "super_admin"].includes(role)) {
+      res.status(403).json({ error: "Admin access required" });
+      return;
+    }
+
+    const fp = generateFingerprint(req);
+    const jwtToken = signToken({
+      aliasEmail: alias.alias_email,
+      tgUserId: alias.tg_user_id,
+      dbKey,
+      fp,
+    });
+
+    setTokenCookie(res, jwtToken);
+    const csrfToken = generateCsrfToken();
+    setCsrfCookie(res, csrfToken);
+
+    const allAliases = await findAllAliasesByTgUser(alias.tg_user_id);
+
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+    const ua = req.headers["user-agent"] || "unknown";
+    logger.info(
+      { email: alias.alias_email, ip, ua: ua.slice(0, 80), type: tokenType },
+      "Token login successful"
+    );
+
+    res.json({
+      success: true,
+      type: tokenType,
+      user: {
+        email: alias.alias_email,
+        tgUserId: alias.tg_user_id,
+        dbKey,
+        role,
+        aliases: allAliases.map((a) => ({
+          email: a.alias.alias_email,
+          active: a.alias.active,
+          expiresAt: a.alias.expires_at,
+          dbKey: a.dbKey,
+          dbLabel: a.dbLabel,
+          hasPassword: !!a.alias.password,
+        })),
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "Token login error");
     res.status(500).json({ error: "Internal server error" });
   }
 });

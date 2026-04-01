@@ -112,7 +112,17 @@ const adminAuthLimiter = rateLimit({
 });
 app.use("/api/auth/admin-login", adminAuthLimiter);
 
-const CSRF_EXEMPT = ["/auth/login", "/auth/admin-login", "/auth/logout", "/healthz", "/incoming-mail"];
+const tokenLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many token login attempts. Try again later." },
+});
+app.use("/api/auth/token-login", tokenLoginLimiter);
+app.use("/api/auth/create-access-token", tokenLoginLimiter);
+
+const CSRF_EXEMPT = ["/auth/login", "/auth/admin-login", "/auth/logout", "/auth/token-login", "/auth/create-access-token", "/healthz", "/incoming-mail"];
 app.use("/api", (req: Request, res: Response, next: NextFunction) => {
   if (CSRF_EXEMPT.some((p) => req.path === p || req.path.startsWith(p))) {
     next();

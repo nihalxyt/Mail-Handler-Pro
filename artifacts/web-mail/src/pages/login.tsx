@@ -49,14 +49,16 @@ export default function LoginPage() {
       setSuccess(true);
     } catch (err) {
       setShake(true);
-      if (err && typeof err === "object" && "status" in err) {
-        const apiErr = err as { status: number; message?: string };
-        const status = apiErr.status;
+      if (err && typeof err === "object" && "message" in err) {
+        const apiErr = err as { status?: number; message: string };
+        const status = apiErr.status || 0;
         const msg = apiErr.message || "";
         if (status === 401) {
-          setError("Invalid email or password. Please try again.");
+          setError(msg || "Invalid email or password.");
         } else if (status === 400) {
           setError(msg || "Please check your input and try again.");
+        } else if (status === 403) {
+          setError(msg || "This account is not accessible.");
         } else if (status === 429) {
           setError("Too many attempts. Please wait and try again.");
         } else if (status >= 500) {
@@ -221,18 +223,11 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="text-center space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: "200ms", animationFillMode: "both" }}>
+          <div className="text-center animate-in fade-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: "200ms", animationFillMode: "both" }}>
             <p className="text-xs text-muted-foreground/70">
               Get your login password from the Telegram bot.
               <br />Your connection is encrypted and secure.
             </p>
-            <a
-              href="/admin-login"
-              className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-            >
-              <Lock className="h-3 w-3" />
-              Admin Access
-            </a>
           </div>
         </div>
       </div>
