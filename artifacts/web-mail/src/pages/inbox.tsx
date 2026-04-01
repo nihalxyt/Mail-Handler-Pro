@@ -15,6 +15,7 @@ import {
   Filter,
   Trash2,
   MailCheck,
+  MailX,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -279,7 +280,7 @@ export default function InboxPage() {
           </Button>
         </div>
         {stats && (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground animate-in fade-in duration-300">
             <span>{stats.total} total</span>
             {stats.unread > 0 && (
               <span className="font-medium text-primary">{stats.unread} unread</span>
@@ -305,17 +306,17 @@ export default function InboxPage() {
         </div>
 
         {error && !loading ? (
-          <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
-              <InboxIcon className="h-8 w-8 text-destructive" />
+          <div className="flex flex-col items-center justify-center py-20 px-4 text-center animate-in fade-in slide-in-from-bottom-4 duration-400">
+            <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mb-4">
+              <MailX className="h-8 w-8 text-destructive" />
             </div>
-            <h3 className="text-lg font-medium mb-1">Something went wrong</h3>
+            <h3 className="text-lg font-semibold mb-1">Something went wrong</h3>
             <p className="text-sm text-muted-foreground max-w-xs mb-4">{error}</p>
             <Button
               variant="outline"
               size="sm"
               onClick={() => fetchInbox(0, search, filter)}
-              className="gap-2"
+              className="gap-2 rounded-xl"
             >
               <RefreshCw className="h-4 w-4" />
               Try again
@@ -324,7 +325,7 @@ export default function InboxPage() {
         ) : loading ? (
           <div className="divide-y">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 sm:p-4">
+              <div key={i} className="flex items-start gap-3 p-3 sm:p-4" style={{ opacity: 1 - i * 0.08 }}>
                 <Skeleton className="h-10 w-10 rounded-full shrink-0" />
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center justify-between">
@@ -338,28 +339,44 @@ export default function InboxPage() {
             ))}
           </div>
         ) : mails.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
-              <InboxIcon className="h-8 w-8 text-muted-foreground" />
+          <div className="flex flex-col items-center justify-center py-20 px-4 text-center animate-in fade-in slide-in-from-bottom-4 duration-400">
+            <div className="w-20 h-20 rounded-2xl bg-muted/80 flex items-center justify-center mb-5">
+              <InboxIcon className="h-10 w-10 text-muted-foreground/60" />
             </div>
-            <h3 className="text-lg font-medium mb-1">No emails found</h3>
+            <h3 className="text-lg font-semibold mb-1.5">
+              {search ? "No results" : filter !== "all" ? `No ${filter} emails` : "Your inbox is empty"}
+            </h3>
             <p className="text-sm text-muted-foreground max-w-xs">
               {search
-                ? "Try adjusting your search terms"
+                ? "Try adjusting your search terms or clearing the filter"
                 : filter !== "all"
                   ? `No ${filter} emails in ${user?.email}`
-                  : `No emails in ${user?.email} yet`}
+                  : `Emails sent to ${user?.email} will appear here`}
             </p>
+            {(search || filter !== "all") && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4 rounded-xl"
+                onClick={() => { setSearch(""); setFilter("all"); }}
+              >
+                Clear filters
+              </Button>
+            )}
           </div>
         ) : (
           <div className="divide-y">
-            {mails.map((mail) => {
+            {mails.map((mail, index) => {
               const senderName = extractSenderName(mail.from);
               const initials = getInitials(senderName);
               const colorClass = avatarColor(mail.from);
 
               return (
-                <div key={mail.id} className="relative overflow-hidden group">
+                <div
+                  key={mail.id}
+                  className="relative overflow-hidden group animate-in fade-in slide-in-from-bottom-2"
+                  style={{ animationDelay: `${Math.min(index * 30, 300)}ms`, animationFillMode: "both" }}
+                >
                   <div className="absolute inset-y-0 right-0 w-24 flex items-center justify-center bg-destructive text-destructive-foreground z-0 md:hidden">
                     <Trash2 className="h-5 w-5" />
                   </div>
@@ -378,13 +395,13 @@ export default function InboxPage() {
                     <button
                       onClick={() => navigate(`/mail/${encodeURIComponent(mail.id)}`)}
                       className={cn(
-                        "w-full flex items-start gap-3 p-3 sm:p-4 text-left transition-colors hover:bg-accent/50",
+                        "w-full flex items-start gap-3 p-3 sm:p-4 text-left transition-all duration-150 hover:bg-accent/50 active:bg-accent/70",
                         !mail.read && "bg-primary/[0.03]"
                       )}
                     >
                       <div
                         className={cn(
-                          "h-10 w-10 rounded-full flex items-center justify-center text-white text-xs font-medium shrink-0",
+                          "h-10 w-10 rounded-full flex items-center justify-center text-white text-xs font-medium shrink-0 shadow-sm transition-transform duration-150 group-hover:scale-105",
                           colorClass
                         )}
                       >
@@ -421,24 +438,24 @@ export default function InboxPage() {
                       <div className="flex flex-col items-center gap-1 shrink-0 mt-1">
                         <button
                           onClick={(e) => handleStarToggle(e, mail)}
-                          className="p-1 -m-1 rounded hover:bg-accent transition-colors"
+                          className="p-1 -m-1 rounded-lg hover:bg-accent transition-all duration-150 active:scale-90"
                         >
                           <Star
                             className={cn(
-                              "h-4 w-4",
+                              "h-4 w-4 transition-all duration-200",
                               mail.starred
-                                ? "fill-amber-400 text-amber-400"
+                                ? "fill-amber-400 text-amber-400 scale-110"
                                 : "text-muted-foreground/40"
                             )}
                           />
                         </button>
-                        <div className="hidden group-hover:flex gap-0.5">
+                        <div className="hidden group-hover:flex gap-0.5 animate-in fade-in duration-150">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleSwipeAction(mail.id, "read");
                             }}
-                            className="p-1 rounded hover:bg-accent"
+                            className="p-1 rounded-lg hover:bg-accent transition-colors"
                             title={mail.read ? "Mark unread" : "Mark read"}
                           >
                             <MailCheck className="h-3.5 w-3.5 text-muted-foreground" />
@@ -448,7 +465,7 @@ export default function InboxPage() {
                               e.stopPropagation();
                               handleSwipeAction(mail.id, "delete");
                             }}
-                            className="p-1 rounded hover:bg-accent"
+                            className="p-1 rounded-lg hover:bg-destructive/10 transition-colors"
                             title="Delete"
                           >
                             <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -464,7 +481,7 @@ export default function InboxPage() {
             <div ref={sentinelRef} className="h-1" />
 
             {loadingMore && (
-              <div className="flex items-center justify-center py-4">
+              <div className="flex items-center justify-center py-4 animate-in fade-in duration-200">
                 <div className="h-5 w-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
             )}

@@ -16,6 +16,10 @@ import {
   Key,
   Eye,
   EyeOff,
+  Check,
+  Shield,
+  Palette,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -80,16 +84,19 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 space-y-6 overflow-y-auto h-full scrollbar-thin">
-      <div>
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Manage your preferences and security
         </p>
       </div>
 
-      <Card>
+      <Card className="animate-in fade-in slide-in-from-bottom-3 duration-400" style={{ animationDelay: "50ms", animationFillMode: "both" }}>
         <CardHeader>
-          <CardTitle className="text-base">Appearance</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Palette className="h-4 w-4 text-primary" />
+            Appearance
+          </CardTitle>
           <CardDescription>Choose your preferred theme</CardDescription>
         </CardHeader>
         <CardContent>
@@ -100,20 +107,21 @@ export default function SettingsPage() {
                 variant={theme === value ? "default" : "outline"}
                 size="sm"
                 onClick={() => setTheme(value)}
-                className="gap-2"
+                className="gap-2 transition-all duration-200"
               >
                 <Icon className="h-4 w-4" />
                 {label}
+                {theme === value && <Check className="h-3.5 w-3.5 ml-1" />}
               </Button>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="animate-in fade-in slide-in-from-bottom-3 duration-400" style={{ animationDelay: "100ms", animationFillMode: "both" }}>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Key className="h-4 w-4" />
+            <Key className="h-4 w-4 text-primary" />
             Change Password
           </CardTitle>
           <CardDescription>Update the web login password for your email aliases</CardDescription>
@@ -126,7 +134,10 @@ export default function SettingsPage() {
               ))}
             </div>
           ) : aliases.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No aliases found</p>
+            <div className="text-center py-6">
+              <Shield className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">No aliases found</p>
+            </div>
           ) : (
             <div className="space-y-4">
               <div className="flex flex-wrap gap-2">
@@ -140,10 +151,10 @@ export default function SettingsPage() {
                       setNewPw("");
                       setConfirmPw("");
                     }}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                    className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-all duration-200 ${
                       selectedAlias === a.email
-                        ? "border-primary bg-primary/5"
-                        : "hover:bg-accent"
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "hover:bg-accent hover:border-border"
                     }`}
                   >
                     <span className="truncate max-w-[200px]">{a.email}</span>
@@ -155,18 +166,20 @@ export default function SettingsPage() {
               </div>
 
               {selectedAlias && (
-                <>
+                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                   <Separator />
-                  <form onSubmit={handlePasswordChange} className="space-y-3">
+                  <form onSubmit={handlePasswordChange} className="space-y-3 mt-4">
                     {pwMessage && (
                       <div
-                        className={`flex items-center gap-2 p-3 text-sm rounded-lg border ${
+                        className={`flex items-center gap-2 p-3 text-sm rounded-xl border animate-in fade-in slide-in-from-top-1 duration-300 ${
                           pwMessage.type === "success"
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800"
                             : "bg-destructive/10 text-destructive border-destructive/20"
                         }`}
                       >
-                        <div className={`h-4 w-4 rounded-full shrink-0 ${pwMessage.type === "success" ? "bg-emerald-500" : "bg-destructive"}`} />
+                        <div className={`h-4 w-4 rounded-full shrink-0 flex items-center justify-center ${pwMessage.type === "success" ? "bg-emerald-500" : "bg-destructive"}`}>
+                          {pwMessage.type === "success" && <Check className="h-2.5 w-2.5 text-white" />}
+                        </div>
                         {pwMessage.text}
                       </div>
                     )}
@@ -181,12 +194,12 @@ export default function SettingsPage() {
                           value={currentPw}
                           onChange={(e) => setCurrentPw(e.target.value)}
                           placeholder="Current password"
-                          className="pr-10"
+                          className="pr-10 rounded-xl"
                         />
                         <button
                           type="button"
                           onClick={() => setShowCurrentPw(!showCurrentPw)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                           tabIndex={-1}
                         >
                           {showCurrentPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -204,12 +217,12 @@ export default function SettingsPage() {
                           value={newPw}
                           onChange={(e) => setNewPw(e.target.value)}
                           placeholder="New password (min 6 chars)"
-                          className="pr-10"
+                          className="pr-10 rounded-xl"
                         />
                         <button
                           type="button"
                           onClick={() => setShowNewPw(!showNewPw)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                           tabIndex={-1}
                         >
                           {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -226,22 +239,31 @@ export default function SettingsPage() {
                         value={confirmPw}
                         onChange={(e) => setConfirmPw(e.target.value)}
                         placeholder="Confirm new password"
+                        className="rounded-xl"
                       />
                     </div>
-                    <Button type="submit" size="sm" disabled={pwLoading || !newPw}>
-                      {pwLoading ? "Changing..." : "Change Password"}
+                    <Button type="submit" size="sm" disabled={pwLoading || !newPw} className="rounded-xl">
+                      {pwLoading ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          Changing...
+                        </span>
+                      ) : "Change Password"}
                     </Button>
                   </form>
-                </>
+                </div>
               )}
             </div>
           )}
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="animate-in fade-in slide-in-from-bottom-3 duration-400" style={{ animationDelay: "150ms", animationFillMode: "both" }}>
         <CardHeader>
-          <CardTitle className="text-base">Account</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <User className="h-4 w-4 text-primary" />
+            Account
+          </CardTitle>
           <CardDescription>
             Signed in as <span className="font-medium text-foreground">{user?.email}</span>
           </CardDescription>
@@ -250,7 +272,7 @@ export default function SettingsPage() {
           <Button
             variant="outline"
             onClick={logout}
-            className="gap-2 text-destructive hover:text-destructive"
+            className="gap-2 text-destructive hover:text-destructive rounded-xl hover:bg-destructive/10 transition-colors"
           >
             <LogOut className="h-4 w-4" />
             Sign out

@@ -6,6 +6,9 @@ import {
   setTokenCookie,
   clearTokenCookie,
   authMiddleware,
+  generateFingerprint,
+  generateCsrfToken,
+  setCsrfCookie,
 } from "../middleware/auth";
 import { logger } from "../lib/logger";
 
@@ -65,17 +68,25 @@ router.post("/auth/login", async (req, res) => {
       return;
     }
 
+    const fp = generateFingerprint(req);
+
     const token = signToken({
       aliasEmail: alias.alias_email,
       tgUserId: alias.tg_user_id,
       dbKey,
+      fp,
     });
 
     setTokenCookie(res, token);
 
+    const csrfToken = generateCsrfToken();
+    setCsrfCookie(res, csrfToken);
+
     const allAliases = await findAllAliasesByTgUser(alias.tg_user_id);
 
-    logger.info({ email: alias.alias_email }, "User logged in");
+    const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+    const ua = req.headers["user-agent"] || "unknown";
+    logger.info({ email: alias.alias_email, ip, ua: ua.slice(0, 80) }, "User logged in");
 
     res.json({
       success: true,
@@ -113,6 +124,9 @@ router.get("/auth/me", authMiddleware, async (req, res) => {
       const userDoc = await db.collection("users").findOne({ tg_user_id: user.tgUserId });
       if (userDoc) role = userDoc.role || "user";
     }
+
+    const csrfToken = generateCsrfToken();
+    setCsrfCookie(res, csrfToken);
 
     res.json({
       email: user.aliasEmail,
@@ -163,10 +177,13 @@ router.post("/auth/switch", authMiddleware, async (req, res) => {
       return;
     }
 
+    const fp = generateFingerprint(req);
+
     const token = signToken({
       aliasEmail: result.alias.alias_email,
       tgUserId: result.alias.tg_user_id,
       dbKey: result.dbKey,
+      fp,
     });
 
     setTokenCookie(res, token);

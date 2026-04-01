@@ -59,20 +59,20 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 Express 5 API server with MongoDB-backed email inbox API. Routes live in `src/routes/` and use JWT auth with httpOnly cookies.
 
 - Entry: `src/index.ts` — reads `PORT`, connects MongoDB, starts Express, graceful shutdown (SIGTERM/SIGINT)
-- App setup: `src/app.ts` — helmet (security headers), compression, rate limiting (120/min general, 20/15min auth), CORS, cookie-parser, JSON/urlencoded parsing, global error handler
+- App setup: `src/app.ts` — helmet (security headers), compression, rate limiting (120/min general, 20/15min auth), CORS, cookie-parser, JSON/urlencoded parsing, CSRF protection middleware, trust proxy enabled, global error handler
 - MongoDB: `src/lib/mongo.ts` — connects to both Bot1 and Bot2 MongoDB databases
-- Auth: `src/middleware/auth.ts` — JWT middleware with httpOnly cookies
+- Auth: `src/middleware/auth.ts` — JWT middleware with httpOnly cookies, request fingerprinting (user-agent + accept-language hash embedded in JWT), CSRF token generation/validation, live alias validation on every authenticated request (checks existence, ownership, active status, expiry)
 - Admin: `src/middleware/admin.ts` — admin role verification (admin, moderator, super_admin)
 - Utilities: `src/lib/sanitize.ts` — regex escaping, search query sanitization, dbKey validation
 - Routes:
   - `src/routes/health.ts` — `GET /api/healthz`
-  - `src/routes/auth.ts` — `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/auth/switch`
+  - `src/routes/auth.ts` — `POST /api/auth/login` (with fingerprint + CSRF token issuance), `POST /api/auth/logout`, `GET /api/auth/me` (refreshes CSRF token), `POST /api/auth/switch`
   - `src/routes/inbox.ts` — `GET /api/inbox` (paginated), `GET /api/inbox/stats`
   - `src/routes/mail.ts` — `GET /api/mail/:id`, `PATCH /api/mail/:id`, `POST /api/mail/batch`
   - `src/routes/aliases.ts` — `GET /api/aliases`, `PATCH /api/aliases/:email/password`
   - `src/routes/incoming.ts` — `POST /api/incoming-mail` (Cloudflare worker endpoint, API key auth)
-  - `src/routes/admin.ts` — Full admin panel API (dashboard stats, user/alias management, role/status changes, admin action logging with Telegram notifications)
-- Security: helmet headers, rate limiting, regex injection prevention, input length limits, bcrypt(12) password hashing
+  - `src/routes/admin.ts` — Full admin panel API (dashboard stats, user/alias management, role/status changes, bulk set passwords, admin action logging with Telegram notifications)
+- Security: helmet headers, CSRF double-submit cookie pattern, request fingerprinting, live alias validation, rate limiting, regex injection prevention, input length limits, bcrypt(12) password hashing, trust proxy for correct IP detection
 - Dependencies: `mongodb`, `jsonwebtoken`, `bcryptjs`, `cookie-parser`, `helmet`, `compression`, `express-rate-limit`
 - Depends on: `@workspace/db`, `@workspace/api-zod`
 

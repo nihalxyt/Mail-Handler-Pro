@@ -24,6 +24,8 @@ import {
   ExternalLink,
   Download,
   Image,
+  Clock,
+  AtSign,
 } from "lucide-react";
 
 function createFullHtmlDocument(html: string, isDark: boolean): string {
@@ -224,7 +226,7 @@ ul, ol { padding-left: 24px; }
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4">
+      <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4 animate-in fade-in duration-300">
         <div className="flex items-center gap-3">
           <Skeleton className="h-9 w-9 rounded-lg" />
           <Skeleton className="h-5 w-24" />
@@ -244,7 +246,7 @@ ul, ol { padding-left: 24px; }
 
   if (error || !mail) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 px-4">
+      <div className="flex flex-col items-center justify-center py-20 px-4 animate-in fade-in slide-in-from-bottom-4 duration-400">
         <div className="w-16 h-16 rounded-2xl bg-destructive/10 flex items-center justify-center mb-4">
           <Mail className="h-8 w-8 text-destructive" />
         </div>
@@ -264,7 +266,7 @@ ul, ol { padding-left: 24px; }
   const colorClass = avatarColor(mail.from);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full animate-in fade-in duration-300">
       <div className="sticky top-0 z-10 bg-background/80 glass border-b px-3 sm:px-4 py-2 flex items-center gap-1.5 sm:gap-2">
         <Button
           variant="ghost"
@@ -315,20 +317,20 @@ ul, ol { padding-left: 24px; }
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 rounded-lg"
+          className="h-9 w-9 rounded-lg transition-all duration-150 active:scale-90"
           onClick={handleStar}
         >
           <Star
             className={cn(
-              "h-4 w-4",
-              mail.starred ? "fill-amber-400 text-amber-400" : ""
+              "h-4 w-4 transition-all duration-200",
+              mail.starred ? "fill-amber-400 text-amber-400 scale-110" : ""
             )}
           />
         </Button>
         <Button
           variant="ghost"
           size="icon"
-          className="h-9 w-9 rounded-lg text-destructive hover:text-destructive"
+          className="h-9 w-9 rounded-lg text-destructive hover:text-destructive hover:bg-destructive/10 transition-colors"
           onClick={handleDelete}
         >
           <Trash2 className="h-4 w-4" />
@@ -337,7 +339,7 @@ ul, ol { padding-left: 24px; }
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         <div className={cn(
-          "mx-auto px-4 sm:px-6 py-4 sm:py-6",
+          "mx-auto px-4 sm:px-6 py-4 sm:py-6 animate-in fade-in slide-in-from-bottom-2 duration-400",
           fullView ? "max-w-5xl" : "max-w-3xl"
         )}>
           <h1 className="text-xl sm:text-2xl font-bold mb-5 leading-tight tracking-tight">
@@ -347,7 +349,7 @@ ul, ol { padding-left: 24px; }
           <div className="flex items-start gap-3 mb-6">
             <div
               className={cn(
-                "h-11 w-11 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0",
+                "h-11 w-11 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm",
                 colorClass
               )}
             >
@@ -360,10 +362,16 @@ ul, ol { padding-left: 24px; }
                   &lt;{senderEmail}&gt;
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 flex-wrap">
-                <span>to <span className="font-medium">{mail.aliasEmail}</span></span>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 flex-wrap">
+                <span className="inline-flex items-center gap-1">
+                  <AtSign className="h-3 w-3" />
+                  <span className="font-medium">{mail.aliasEmail}</span>
+                </span>
                 <span className="text-muted-foreground/40">|</span>
-                <span>{formatFullDate(mail.receivedAt)}</span>
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {formatFullDate(mail.receivedAt)}
+                </span>
               </div>
             </div>
           </div>
@@ -371,7 +379,7 @@ ul, ol { padding-left: 24px; }
           {hasHtmlImages && !showImages && (
             <button
               onClick={() => setShowImages(true)}
-              className="flex items-center gap-2 w-full p-3 mb-4 text-sm text-muted-foreground bg-muted/50 hover:bg-muted rounded-xl border border-border/50 transition-colors"
+              className="flex items-center gap-2 w-full p-3 mb-4 text-sm text-muted-foreground bg-muted/50 hover:bg-muted rounded-xl border border-border/50 transition-all duration-200 hover:border-border"
             >
               <Image className="h-4 w-4 shrink-0" />
               <span>Images are hidden for security.</span>
@@ -380,8 +388,8 @@ ul, ol { padding-left: 24px; }
           )}
 
           <div className={cn(
-            "border rounded-xl overflow-hidden bg-card shadow-sm",
-            fullView && "shadow-md"
+            "border rounded-xl overflow-hidden bg-card transition-shadow duration-300",
+            fullView ? "shadow-md" : "shadow-sm"
           )}>
             <iframe
               ref={iframeRef}
@@ -396,11 +404,11 @@ ul, ol { padding-left: 24px; }
             <p className="text-[11px] text-muted-foreground/50">
               via {mail.bot || "bot"} | {mail.aliasEmail}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 text-xs gap-1.5 rounded-lg"
+                className="h-8 text-xs gap-1.5 rounded-lg hover:bg-muted"
                 onClick={() => {
                   const blob = new Blob([mail.body], { type: "text/html" });
                   const url = URL.createObjectURL(blob);
@@ -417,7 +425,7 @@ ul, ol { padding-left: 24px; }
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-8 text-xs gap-1.5 rounded-lg"
+                className="h-8 text-xs gap-1.5 rounded-lg hover:bg-muted"
                 onClick={() => {
                   const blob = new Blob([mail.body], { type: "text/html" });
                   const url = URL.createObjectURL(blob);

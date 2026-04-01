@@ -454,6 +454,69 @@ router.post("/admin/aliases/:email/reset-password", ...adminAuth, async (req, re
   }
 });
 
+router.post("/admin/aliases/bulk-set-passwords", ...adminAuth, async (req, res) => {
+  try {
+    const { dbKey } = req.body as { dbKey: string };
+
+    if (!isValidDbKey(dbKey)) {
+      res.status(400).json({ error: "Invalid database" });
+      return;
+    }
+
+    const db = getDb(dbKey);
+    if (!db) {
+      res.status(400).json({ error: "Database not available" });
+      return;
+    }
+
+    const aliasesWithoutPw = await db
+      .collection<AliasDoc>("aliases")
+      .find({
+        $or: [{ password: { $exists: false } }, { password: null }, { password: "" }],
+        active: true,
+      })
+      .toArray();
+
+    if (aliasesWithoutPw.length === 0) {
+      res.json({ success: true, updated: 0, passwords: [] });
+      return;
+    }
+
+    const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+    const results: { email: string; password: string }[] = [];
+
+    for (const alias of aliasesWithoutPw) {
+      const bytes = crypto.randomBytes(10);
+      const plain = Array.from(bytes).map((b) => alphabet[b % alphabet.length]).join("");
+      const hashed = await bcrypt.hash(plain, 12);
+
+      await db.collection("aliases").updateOne(
+        { alias_email: alias.alias_email },
+        { $set: { password: hashed, updated_at: new Date() } }
+      );
+
+      results.push({ email: alias.alias_email, password: plain });
+    }
+
+    const admin = getAdminUser(req);
+    await logAdminAction(
+      dbKey,
+      admin,
+      "bulk_set_passwords",
+      "aliases",
+      `${results.length} aliases`,
+      `Set web passwords for ${results.length} aliases without passwords`
+    );
+
+    logger.info({ count: results.length, dbKey }, "Bulk password set complete");
+
+    res.json({ success: true, updated: results.length, passwords: results });
+  } catch (err) {
+    logger.error({ err }, "Bulk set passwords error");
+    res.status(500).json({ error: "Failed to set bulk passwords" });
+  }
+});
+
 router.get("/admin/logs", ...adminAuth, async (req, res) => {
   try {
     const page = String(req.query.page || "0");

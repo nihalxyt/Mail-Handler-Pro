@@ -1,16 +1,31 @@
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+function getCsrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${BASE}/api${path}`;
+  const method = options.method?.toUpperCase() || "GET";
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> || {}),
+  };
+
+  if (method !== "GET" && method !== "HEAD") {
+    const csrf = getCsrfToken();
+    if (csrf) {
+      headers["X-CSRF-Token"] = csrf;
+    }
+  }
+
   const res = await fetch(url, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
+    headers,
     ...options,
   });
 
@@ -234,6 +249,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ dbKey }),
     });
+  },
+
+  adminBulkSetPasswords(dbKey: string) {
+    return request<{ success: boolean; updated: number; passwords: { email: string; password: string }[] }>(
+      "/admin/aliases/bulk-set-passwords",
+      {
+        method: "POST",
+        body: JSON.stringify({ dbKey }),
+      }
+    );
   },
 
   adminLogs(params?: { action?: string; search?: string; page?: number }) {

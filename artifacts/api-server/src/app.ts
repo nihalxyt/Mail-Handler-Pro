@@ -6,9 +6,12 @@ import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
 import router from "./routes";
+import { csrfMiddleware } from "./middleware/auth";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
+app.set("trust proxy", 1);
 
 app.use(helmet({
   contentSecurityPolicy: false,
@@ -79,6 +82,15 @@ const authLimiter = rateLimit({
 
 app.use("/api", apiLimiter);
 app.use("/api/auth/login", authLimiter);
+
+const CSRF_EXEMPT = ["/auth/login", "/auth/logout", "/healthz", "/incoming-mail"];
+app.use("/api", (req: Request, res: Response, next: NextFunction) => {
+  if (CSRF_EXEMPT.some((p) => req.path === p || req.path.startsWith(p))) {
+    next();
+    return;
+  }
+  csrfMiddleware(req, res, next);
+});
 
 app.use("/api", router);
 

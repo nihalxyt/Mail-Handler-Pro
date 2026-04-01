@@ -28,19 +28,13 @@ from telethon import TelegramClient, events, Button
 from motor.motor_asyncio import AsyncIOMotorClient
 
 try:
-    from aiosmtpd.controller import Controller
-    AIOSMTPD_AVAILABLE = True
-except ImportError:
-    AIOSMTPD_AVAILABLE = False
-
-try:
     import bcrypt as _bcrypt
     _BCRYPT_AVAILABLE = True
 except ImportError:
     _BCRYPT_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger("MasterMailBot")
+logger = logging.getLogger("ZayMail")
 
 try:
     from dotenv import load_dotenv
@@ -49,9 +43,6 @@ except Exception:
     pass
 
 
-# =====================================================================
-# IN-MEMORY TTL CACHE — reduces MongoDB hits dramatically
-# =====================================================================
 class TTLCache:
     __slots__ = ("_store", "_max", "_default_ttl")
 
@@ -90,37 +81,38 @@ class TTLCache:
         self._store.clear()
 
 
-# =====================================================================
-# BOT 1 CONFIG (Nihal)
-# =====================================================================
-BOT1_TG_API_ID   = int(os.environ.get("BOT1_TG_API_ID",   "38476908"))
-BOT1_TG_API_HASH = os.environ.get("BOT1_TG_API_HASH",     "51189635e11bdf468bd37f0935b03f41")
-BOT1_TG_TOKEN    = os.environ.get("BOT1_TG_BOT_TOKEN",    "6555670943:AAEdyqV2-gGSBZ7no0jHdZroB0UJCvcSKLI")
-BOT1_MONGO_URI   = os.environ.get("BOT1_MONGO_URI",       "mongodb+srv://nihal:Nihal119@verified.a3hzz.mongodb.net/?retryWrites=true&w=majority&appName=Verified")
-BOT1_DB_NAME     = os.environ.get("BOT1_DB_NAME",         "mailbot_pro")
-BOT1_SUPER_ADMIN_IDS: Set[int] = {7166047321, 6100176781}
+def _require_env(key, description=""):
+    val = os.environ.get(key)
+    if not val:
+        logger.error(f"FATAL: Environment variable '{key}' is required{' (' + description + ')' if description else ''}. Set it in .env file.")
+        sys.exit(1)
+    return val
 
-# =====================================================================
-# BOT 2 CONFIG (Maruf)
-# =====================================================================
-BOT2_TG_API_ID   = int(os.environ.get("BOT2_TG_API_ID",   "38476908"))
-BOT2_TG_API_HASH = os.environ.get("BOT2_TG_API_HASH",     "51189635e11bdf468bd37f0935b03f41")
-BOT2_TG_TOKEN    = os.environ.get("BOT2_TG_BOT_TOKEN",    "8212911955:AAEc2z35pyWJkWnqK5MpG4ImHmy6TYB5kkg")
-BOT2_MONGO_URI   = os.environ.get("BOT2_MONGO_URI",       "mongodb+srv://marufshikder010:Maruf998@tender.qzyvgs7.mongodb.net/?retryWrites=true&w=majority&appName=Tender")
-BOT2_DB_NAME     = os.environ.get("BOT2_DB_NAME",         "mailbot_pro")
-BOT2_SUPER_ADMIN_IDS: Set[int] = {7166047321, 6100176781}
 
-# =====================================================================
-# SMTP CONFIG
-# =====================================================================
-SMTP_HOST = os.environ.get("SMTP_HOST", "0.0.0.0")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "25"))
+BOT1_TG_API_ID   = int(_require_env("BOT1_TG_API_ID", "Telegram API ID for Bot 1"))
+BOT1_TG_API_HASH = _require_env("BOT1_TG_API_HASH", "Telegram API Hash for Bot 1")
+BOT1_TG_TOKEN    = _require_env("BOT1_TG_BOT_TOKEN", "Bot Token for Bot 1")
+BOT1_MONGO_URI   = _require_env("BOT1_MONGO_URI", "MongoDB URI for Bot 1")
+BOT1_DB_NAME     = os.environ.get("BOT1_DB_NAME", "mailbot_pro")
 
-# =====================================================================
-# SHARED CONSTANTS
-# =====================================================================
+BOT2_TG_API_ID   = int(_require_env("BOT2_TG_API_ID", "Telegram API ID for Bot 2"))
+BOT2_TG_API_HASH = _require_env("BOT2_TG_API_HASH", "Telegram API Hash for Bot 2")
+BOT2_TG_TOKEN    = _require_env("BOT2_TG_BOT_TOKEN", "Bot Token for Bot 2")
+BOT2_MONGO_URI   = _require_env("BOT2_MONGO_URI", "MongoDB URI for Bot 2")
+BOT2_DB_NAME     = os.environ.get("BOT2_DB_NAME", "mailbot_pro")
+
+_raw_admin_ids = os.environ.get("SUPER_ADMIN_IDS", "")
+if not _raw_admin_ids:
+    logger.error("FATAL: SUPER_ADMIN_IDS env var is required (comma-separated Telegram IDs)")
+    sys.exit(1)
+_GLOBAL_SUPER_ADMIN_IDS: Set[int] = {int(x.strip()) for x in _raw_admin_ids.split(",") if x.strip().isdigit()}
+BOT1_SUPER_ADMIN_IDS = _GLOBAL_SUPER_ADMIN_IDS
+BOT2_SUPER_ADMIN_IDS = _GLOBAL_SUPER_ADMIN_IDS
+
+WEB_BASE_URL = os.environ.get("WEB_BASE_URL", "https://mail.zayvex.cloud")
+
 UTC      = timezone.utc
-LOCAL_TZ = ZoneInfo("Asia/Dhaka")
+LOCAL_TZ = ZoneInfo(os.environ.get("TIMEZONE", "Asia/Dhaka"))
 EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", re.I)
 _RE_SCRIPT  = re.compile(r'<(script|style|head|title|meta)[^>]*>.*?</\1>', re.DOTALL | re.I)
 _RE_COMMENT = re.compile(r'<!--.*?-->', re.DOTALL)
@@ -137,9 +129,6 @@ _RE_BLANKS  = re.compile(r'\n\s*\n+')
 PAGE_SIZE       = 10
 ADMIN_PAGE_SIZE = 8
 
-# =====================================================================
-# MONGODB  — optimized connection pooling
-# =====================================================================
 _MONGO_OPTS = {"maxPoolSize": 20, "minPoolSize": 2, "maxIdleTimeMS": 45000,
                "connectTimeoutMS": 5000, "serverSelectionTimeoutMS": 5000,
                "retryWrites": True, "w": "majority"}
@@ -159,15 +148,9 @@ bot2_col_logs     = db2["mail_logs"]
 bot2_col_settings = db2["settings"]
 bot2_col_stats    = db2["statistics"]
 
-# =====================================================================
-# TELEGRAM CLIENTS
-# =====================================================================
 bot1 = TelegramClient("bot1_session", BOT1_TG_API_ID, BOT1_TG_API_HASH)
 bot2 = TelegramClient("bot2_session", BOT2_TG_API_ID, BOT2_TG_API_HASH)
 
-# =====================================================================
-# ALIAS CACHES (per bot) — in‑memory dict cache
-# =====================================================================
 bot1_alias_cache = {"by_email": {}, "all_emails": set(), "updated_at": 0.0}
 bot1_alias_token_cache = {}
 bot1_alias_token_updated_at = 0.0
@@ -179,9 +162,6 @@ bot2_alias_token_updated_at = 0.0
 bot1_admin_state: Dict[int, dict] = {}
 bot2_admin_state: Dict[int, dict] = {}
 
-# =====================================================================
-# PER-BOT TTL CACHES  — user lookups, counts, access checks
-# =====================================================================
 bot1_user_cache  = TTLCache(maxsize=4096, default_ttl=120)
 bot1_count_cache = TTLCache(maxsize=1024, default_ttl=30)
 bot2_user_cache  = TTLCache(maxsize=4096, default_ttl=120)
@@ -194,9 +174,6 @@ def _ctx_caches(bot_instance):
     return bot2_user_cache, bot2_count_cache
 
 
-# =====================================================================
-# CACHED DB HELPERS — read‑through TTL cache, write‑invalidate
-# =====================================================================
 async def cached_find_user(tg_user_id, col_users, user_cache):
     key = f"u:{tg_user_id}"
     hit = user_cache.get(key)
@@ -219,9 +196,6 @@ async def cached_count(col, query, count_cache, cache_key, ttl=30):
     return val
 
 
-# =====================================================================
-# UTILITY FUNCTIONS
-# =====================================================================
 def now_utc():
     return datetime.now(UTC)
 
@@ -320,19 +294,14 @@ def short(s, n=50):
 def sha256(s):
     return hashlib.sha256(s.encode("utf-8", errors="ignore")).hexdigest()
 
-def generate_web_password(length=12):
-    alphabet = string.ascii_letters + string.digits + "!@#$%"
+def generate_web_password(length=14):
+    alphabet = string.ascii_letters + string.digits + "!@#$%&*"
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 def hash_password(password):
     if _BCRYPT_AVAILABLE:
         return _bcrypt.hashpw(password.encode('utf-8'), _bcrypt.gensalt(12)).decode('utf-8')
-    logger.warning("bcrypt not available — using passlib bcrypt fallback")
-    try:
-        from passlib.hash import bcrypt as _passlib_bcrypt
-        return _passlib_bcrypt.using(rounds=12).hash(password)
-    except ImportError:
-        raise RuntimeError("bcrypt or passlib is required for password hashing. Install with: pip install bcrypt")
+    raise RuntimeError("bcrypt is required. Install with: pip install bcrypt")
 
 def cb(*parts):
     data = "|".join(str(p) for p in parts)
@@ -358,9 +327,6 @@ def time_remaining(expires_at):
         return f"{mins} minutes"
 
 
-# =====================================================================
-# DB INDEXES
-# =====================================================================
 async def ensure_indexes(col_users, col_aliases, col_logs):
     await col_users.create_index("tg_user_id", unique=True)
     await col_users.create_index("username")
@@ -376,9 +342,6 @@ async def ensure_indexes(col_users, col_aliases, col_logs):
     await col_logs.create_index([("read", 1), ("tg_user_id", 1)])
 
 
-# =====================================================================
-# ALIAS CACHE FUNCTIONS
-# =====================================================================
 async def refresh_alias_cache(col_aliases, alias_cache, force=False):
     if not force and (time.time() - alias_cache["updated_at"] < 8):
         return
@@ -424,9 +387,6 @@ async def refresh_bot2_alias_tokens(force=False):
     bot2_alias_token_updated_at = time.time()
 
 
-# =====================================================================
-# CROSS-BOT EMAIL UNIQUENESS CHECK
-# =====================================================================
 def email_exists_in_other_bot(alias_email, current_bot_instance):
     alias_lower = alias_email.lower()
     if current_bot_instance is bot1:
@@ -443,9 +403,6 @@ async def email_exists_in_other_bot_db(alias_email, current_bot_instance):
     return found is not None
 
 
-# =====================================================================
-# USER / ACCESS HELPERS  (cached)
-# =====================================================================
 async def is_super_admin(tg_user_id, super_admin_ids):
     return tg_user_id in super_admin_ids
 
@@ -511,9 +468,6 @@ async def check_user_access(tg_user_id, col_users, user_cache):
     return False, "unknown"
 
 
-# =====================================================================
-# KEYBOARD BUILDERS
-# =====================================================================
 def admin_main_kb():
     return [
         [Button.inline("👥 User Management", cb("A", "users")),
@@ -524,6 +478,7 @@ def admin_main_kb():
          Button.inline("🔧 System Settings", cb("A", "settings"))],
         [Button.inline("📋 Activity Log", cb("A", "activity")),
          Button.inline("🔄 Refresh Cache", cb("A", "refresh"))],
+        [Button.inline("🔑 Bulk Set Passwords", cb("A", "bulkpw"))],
     ]
 
 def users_management_kb():
@@ -547,6 +502,10 @@ def user_detail_kb(tg_id, status, role="user"):
     buttons.append([
         Button.inline("📊 User Stats", cb("UM", "stats", str(tg_id))),
         Button.inline("📥 User Inbox", cb("UM", "inbox", str(tg_id), "0"))
+    ])
+    buttons.append([
+        Button.inline("🔑 Web Logins", cb("UM", "weblogins", str(tg_id))),
+        Button.inline("🔄 Reset All PW", cb("UM", "resetallpw", str(tg_id)))
     ])
     if status == "pending":
         buttons.append([
@@ -596,6 +555,10 @@ def alias_actions_kb(token, is_active):
             Button.inline("🔄 Reassign User", cb("EA", token, "reassign")),
             Button.inline("🗑️ Deactivate", cb("ED", token))
         ])
+        buttons.append([
+            Button.inline("🔑 Reset Password", cb("EA", token, "resetpw")),
+            Button.inline("🔒 Toggle Email", cb("EA", token, "toggle"))
+        ])
     else:
         buttons.append([
             Button.inline("♻️ Reactivate +30d", cb("ER", token, "30")),
@@ -621,8 +584,9 @@ def user_main_kb():
         [Button.inline("⭐ Starred", cb("M", "starred", "0")),
          Button.inline("📊 Statistics", cb("M", "stats"))],
         [Button.inline("🔑 Web Password", cb("M", "webpass")),
-         Button.inline("⚙️ Settings", cb("M", "settings"))],
-        [Button.inline("ℹ️ Help", cb("M", "help"))],
+         Button.inline("🔐 Change Password", cb("M", "chgpass"))],
+        [Button.inline("⚙️ Settings", cb("M", "settings")),
+         Button.inline("ℹ️ Help", cb("M", "help"))],
     ]
 
 def user_reply_kb():
@@ -649,9 +613,6 @@ def settings_kb():
     ]
 
 
-# =====================================================================
-# PANEL / VIEW FUNCTIONS  (using cached counts)
-# =====================================================================
 async def admin_panel(event, bot_instance, col_users, col_aliases, col_logs, count_cache, edit=False):
     now = now_utc()
     ds = day_start_utc()
@@ -668,7 +629,7 @@ async def admin_panel(event, bot_instance, col_users, col_aliases, col_logs, cou
         cached_count(col_logs, {}, count_cache, "cnt:mails:total"),
     )
     text = (
-        "🛠️ **Admin Dashboard**\n"
+        "🛠️ **ZayMail Admin Dashboard**\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         "👥 **Users:**\n"
         f" ├ Total: **{total_users}**\n"
@@ -796,19 +757,29 @@ async def show_user_emails(event, col_aliases, col_logs, edit=False):
     now = now_utc()
     aliases = await col_aliases.find({"tg_user_id": event.sender_id}).sort("created_at", -1).limit(50).to_list(50)
     text = "📧 My Email Aliases\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    buttons = []
     for a in aliases:
         exp_aware = make_aware(a.get("expires_at"))
         is_active = a.get("active") and exp_aware and exp_aware > now
         status_emoji = "✅" if is_active else "❌"
+        has_pw = "🔑" if a.get("password") else "🔒"
         mail_count = await col_logs.count_documents({"alias_email": a["alias_email"], "tg_user_id": event.sender_id})
-        text += f"{status_emoji} {a['alias_email']}\n"
+        text += f"{status_emoji} `{a['alias_email']}`\n"
         text += f" ├ Expires: {time_remaining(exp_aware)}\n"
+        text += f" ├ Web Login: {has_pw}\n"
         text += f" └ Mails: {mail_count}\n\n"
+        if is_active:
+            token = sha256(a["alias_email"])[:12]
+            buttons.append([
+                Button.inline(f"{status_emoji} {short(a['alias_email'], 22)}", cb("WP", "view", token)),
+                Button.inline("🔑 Reset PW", cb("WP", "reset", token))
+            ])
     if not aliases:
         text += "No email aliases yet.\nContact admin to get one assigned."
+    buttons.append([Button.inline("⬅️ Back", cb("M", "back"))])
     if edit:
-        return await event.edit(text, buttons=[[Button.inline("⬅️ Back", cb("M", "back"))]])
-    return await event.respond(text, buttons=[[Button.inline("⬅️ Back", cb("M", "back"))]])
+        return await event.edit(text, buttons=buttons)
+    return await event.respond(text, buttons=buttons)
 
 async def show_user_stats(event, col_users, col_aliases, col_logs, user_cache, edit=False):
     u = await cached_find_user(event.sender_id, col_users, user_cache)
@@ -854,21 +825,25 @@ async def show_user_settings(event, col_users, user_cache, edit=False):
 
 async def show_user_help(event, edit=False):
     help_text = (
-        "ℹ️ Help & Support\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        "ℹ️ **ZayMail Help**\n━━━━━━━━━━━━━━━━━━━━\n\n"
         "📧 Features:\n"
         " • Receive emails directly in Telegram\n"
         " • Multiple email aliases supported\n"
         " • Star important emails\n"
         " • Real-time notifications\n"
-        " • Read full email content\n\n"
+        " • Read full email content in bot or web\n"
+        " • Change web password from bot\n\n"
         "📖 How to Use:\n"
         " 1. Admin adds your access\n"
         " 2. Admin assigns email aliases to you\n"
-        " 3. Emails sent to your aliases appear here\n"
-        " 4. Tap on emails to read full content\n"
-        " 5. Star important ones for quick access\n\n"
-        "🆘 Need Help?\n"
-        " Contact your administrator."
+        " 3. Emails appear here automatically\n"
+        " 4. Tap 📖 Read Full to view in bot\n"
+        " 5. Tap 🌐 Read on Web to open in browser\n\n"
+        "🔑 Web Login:\n"
+        f" • Go to {WEB_BASE_URL}\n"
+        " • Use your email + password from bot\n"
+        " • Change password: 🔐 Change Password\n\n"
+        "🆘 Need Help? Contact admin."
     )
     if edit:
         return await event.edit(help_text, buttons=[[Button.inline("⬅️ Back", cb("M", "back"))]])
@@ -901,11 +876,11 @@ async def show_web_passwords(event, col_aliases, edit=False):
         token = sha256(em)[:12]
         if not expired:
             btns.append([
-                Button.inline(f"🔄 Reset: {short(em, 25)}", cb("WP", "reset", token)),
-                Button.inline(f"ℹ️ Status: {short(em, 25)}", cb("WP", "view", token))
+                Button.inline(f"🔄 Reset: {short(em, 20)}", cb("WP", "reset", token)),
+                Button.inline(f"ℹ️ Info", cb("WP", "view", token))
             ])
 
-    lines.append("\n\n💡 Use these credentials to log into the web inbox.")
+    lines.append(f"\n\n💡 Web Login: {WEB_BASE_URL}")
     btns.append([Button.inline("⬅️ Back", cb("M", "back"))])
     text = "\n".join(lines)
     if edit:
@@ -929,14 +904,15 @@ async def handle_web_password_callback(event, parts, col_aliases, alias_token_ca
         if alias.get("password"):
             return await event.answer(
                 f"🔑 Email: {alias_email}\n\nPassword is set. Use 'Reset' to generate a new one.\n\n"
-                "For security, stored passwords cannot be viewed.\nReset to get a new one.",
+                f"Web Login: {WEB_BASE_URL}\n"
+                "For security, stored passwords cannot be viewed.",
                 alert=True
             )
         else:
             return await event.answer("❌ No password set yet. Use 'Reset' to generate one.", alert=True)
 
     elif action == "reset":
-        new_password = generate_web_password(12)
+        new_password = generate_web_password(14)
         hashed = hash_password(new_password)
         await col_aliases.update_one(
             {"alias_email": alias_email},
@@ -946,8 +922,8 @@ async def handle_web_password_callback(event, parts, col_aliases, alias_token_ca
             f"🔑 **Password Reset!**\n━━━━━━━━━━━━━━━━━━━━\n\n"
             f"📧 Email: `{alias_email}`\n"
             f"🔑 New Password: `{new_password}`\n\n"
-            "⚠️ **Save this password!** It won't be shown again.\n"
-            "Use it to log into the web inbox.",
+            f"🌐 Web Login: {WEB_BASE_URL}\n\n"
+            "⚠️ **Save this password!** It won't be shown again.",
             buttons=[
                 [Button.inline("🔑 All Passwords", cb("M", "webpass"))],
                 [Button.inline("⬅️ Back", cb("M", "back"))]
@@ -1012,6 +988,8 @@ async def show_admin_stats(event, col_users, col_aliases, col_logs, count_cache)
         cached_count(col_logs, {"deleted": True}, count_cache, "cnt:mails:deleted"),
         cached_count(col_logs, {"read": {"$ne": True}, "deleted": {"$ne": True}}, count_cache, "cnt:mails:unread"),
     )
+    with_pw = await col_aliases.count_documents({"password": {"$exists": True, "$ne": None, "$ne": ""}})
+    without_pw = await col_aliases.count_documents({"$or": [{"password": {"$exists": False}}, {"password": None}, {"password": ""}]})
     text = (
         "📊 **System Statistics**\n━━━━━━━━━━━━━━━━━━━━\n\n"
         "👥 **Users:**\n"
@@ -1021,7 +999,9 @@ async def show_admin_stats(event, col_users, col_aliases, col_logs, count_cache)
         f" └ Banned: {banned}\n\n"
         "📧 **Emails:**\n"
         f" ├ Total: {total_aliases}\n"
-        f" └ Active: {active_aliases}\n\n"
+        f" ├ Active: {active_aliases}\n"
+        f" ├ With Password: {with_pw}\n"
+        f" └ Without Password: {without_pw}\n\n"
         "📨 **Mails:**\n"
         f" ├ Total: {total_mails}\n"
         f" ├ Today: {today_mails}\n"
@@ -1081,6 +1061,7 @@ async def show_user_detail(event, tg_id, col_users, col_aliases, col_logs, user_
     active_aliases = await col_aliases.count_documents({"tg_user_id": tg_id, "active": True, "expires_at": {"$gt": now}})
     total_aliases  = await col_aliases.count_documents({"tg_user_id": tg_id})
     total_mails    = await col_logs.count_documents({"tg_user_id": tg_id, "deleted": {"$ne": True}})
+    pw_set = await col_aliases.count_documents({"tg_user_id": tg_id, "password": {"$exists": True, "$ne": None, "$ne": ""}})
     status = u.get("status", "unknown")
     role   = u.get("role", "user")
     status_icons = {"active": "✅", "pending": "⏳", "banned": "⛔"}
@@ -1094,7 +1075,7 @@ async def show_user_detail(event, tg_id, col_users, col_aliases, col_logs, user_
         f"📊 Status: {status_icons.get(status, '❓')} **{status.title()}**\n"
         f"🎖️ Role: {role_icons.get(role, '👤')} **{role.replace('_', ' ').title()}**\n"
         f"📅 Joined: {format_datetime(u.get('created_at'))}\n\n"
-        f"📧 **Emails:**\n ├ Active: {active_aliases}\n └ Total: {total_aliases}\n\n"
+        f"📧 **Emails:**\n ├ Active: {active_aliases}\n ├ Total: {total_aliases}\n └ Web Login Set: {pw_set}/{total_aliases}\n\n"
         f"📨 **Mails:** {total_mails}"
     )
     return await event.edit(text, buttons=user_detail_kb(tg_id, status, role))
@@ -1110,9 +1091,10 @@ async def show_user_emails_admin(event, tg_id, col_users, col_aliases, col_logs,
         exp_aware = make_aware(a.get("expires_at"))
         is_active = a.get("active") and exp_aware and exp_aware > now
         status_emoji = "✅" if is_active else "❌"
+        has_pw = "🔑" if a.get("password") else "🔒"
         mail_count = await col_logs.count_documents({"alias_email": a["alias_email"]})
         token = sha256(a["alias_email"])[:12]
-        text += f"{status_emoji} `{a['alias_email']}`\n ├ Expires: {time_remaining(exp_aware)}\n └ Mails: {mail_count}\n\n"
+        text += f"{status_emoji} `{a['alias_email']}`\n ├ Expires: {time_remaining(exp_aware)}\n ├ Web Login: {has_pw}\n └ Mails: {mail_count}\n\n"
         buttons.append([Button.inline(f"{status_emoji} {short(a['alias_email'], 30)}", cb("EA", token, "view"))])
     if not aliases:
         text += "_No emails assigned._"
@@ -1120,6 +1102,28 @@ async def show_user_emails_admin(event, tg_id, col_users, col_aliases, col_logs,
         Button.inline("➕ Add Email", cb("UM", "addemail", str(tg_id))),
         Button.inline("⬅️ Back", cb("UM", "view", str(tg_id)))
     ])
+    return await event.edit(text, buttons=buttons)
+
+async def show_admin_web_logins(event, tg_id, col_users, col_aliases, user_cache):
+    now = now_utc()
+    aliases = await col_aliases.find({"tg_user_id": tg_id}).to_list(50)
+    u = await cached_find_user(tg_id, col_users, user_cache)
+    uname = u.get("name", "Unknown") if u else "Unknown"
+    text = f"🔑 **Web Logins for {uname}**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    buttons = []
+    for a in aliases:
+        em = a["alias_email"]
+        has_pw = "✅ Set" if a.get("password") else "❌ Not Set"
+        exp_aware = make_aware(a.get("expires_at"))
+        is_active = a.get("active") and exp_aware and exp_aware > now
+        status = "🟢" if is_active else "🔴"
+        text += f"{status} `{em}`\n └ Password: {has_pw}\n\n"
+        token = sha256(em)[:12]
+        if not a.get("password"):
+            buttons.append([Button.inline(f"🔑 Set PW: {short(em, 22)}", cb("EA", token, "resetpw"))])
+    if not aliases:
+        text += "_No emails._"
+    buttons.append([Button.inline("⬅️ Back", cb("UM", "view", str(tg_id)))])
     return await event.edit(text, buttons=buttons)
 
 async def show_alias_list(event, col_users, col_aliases, list_type, user_cache, page=0):
@@ -1174,11 +1178,13 @@ async def show_alias_detail(event, alias_email, col_users, col_aliases, col_logs
     mail_count = await col_logs.count_documents({"alias_email": alias_email})
     token = sha256(alias_email)[:12]
     status = "✅ Active" if is_active else "❌ Inactive/Expired"
+    has_pw = "✅ Set" if alias.get("password") else "❌ Not Set"
     text = (
         f"📧 **Email Details**\n━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📧 Email: `{alias_email}`\n"
         f"📊 Status: **{status}**\n"
         f"👤 User: **{uname}** (`{alias.get('tg_user_id')}`)\n"
+        f"🔑 Web Password: **{has_pw}**\n"
         f"📅 Created: {format_datetime(alias.get('created_at'))}\n"
         f"⏰ Expires: {format_datetime(exp_aware)}\n"
         f"⏳ Remaining: **{time_remaining(exp_aware)}**\n"
@@ -1256,12 +1262,14 @@ async def show_email_overview(event, col_aliases, count_cache):
     expiring_soon = await col_aliases.count_documents({
         "active": True, "expires_at": {"$gt": now, "$lte": now + timedelta(days=7)}
     })
+    with_pw = await col_aliases.count_documents({"password": {"$exists": True, "$ne": None, "$ne": ""}})
     text = (
         "📊 **Email Overview**\n━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📧 Total: **{total}**\n"
         f"✅ Active: **{active}**\n"
         f"❌ Expired: **{expired}**\n"
-        f"⚠️ Expiring in 7 days: **{expiring_soon}**"
+        f"⚠️ Expiring in 7 days: **{expiring_soon}**\n"
+        f"🔑 With Web Password: **{with_pw}**"
     )
     return await event.edit(text, buttons=[[Button.inline("⬅️ Back", cb("A", "aliases"))]])
 
@@ -1294,6 +1302,33 @@ async def do_broadcast(bot_instance, col_users, text_msg, entities, message_obj,
             failed += 1
     return sent, failed
 
+async def bulk_set_passwords(col_aliases, bot_instance, super_admin_ids):
+    aliases = await col_aliases.find({"$or": [{"password": {"$exists": False}}, {"password": None}, {"password": ""}]}).to_list(1000)
+    count = 0
+    for a in aliases:
+        new_pw = generate_web_password(14)
+        hashed = hash_password(new_pw)
+        await col_aliases.update_one(
+            {"alias_email": a["alias_email"]},
+            {"$set": {"password": hashed, "updated_at": now_utc()}}
+        )
+        tg_id = a.get("tg_user_id")
+        if tg_id:
+            try:
+                await bot_instance.send_message(
+                    tg_id,
+                    f"🔑 **Web Login Password Set!**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"📧 Email: `{a['alias_email']}`\n"
+                    f"🔑 Password: `{new_pw}`\n\n"
+                    f"🌐 Login at: {WEB_BASE_URL}\n\n"
+                    "⚠️ Save this password! It won't be shown again.",
+                    buttons=[[Button.inline("🔑 My Passwords", cb("M", "webpass"))]]
+                )
+            except Exception:
+                pass
+        count += 1
+    return count
+
 async def finalize_add_email(admin_tg_id, event, days, bot_instance, col_aliases, alias_cache, alias_token_cache_dict, admin_state, count_cache):
     st = admin_state.get(admin_tg_id)
     if not st:
@@ -1311,7 +1346,7 @@ async def finalize_add_email(admin_tg_id, event, days, bot_instance, col_aliases
             buttons=[[Button.inline("⬅️ Back", cb("A", "aliases"))]]
         )
 
-    web_password = generate_web_password(12)
+    web_password = generate_web_password(14)
     hashed_pw = hash_password(web_password)
 
     await col_aliases.update_one(
@@ -1346,9 +1381,9 @@ async def finalize_add_email(admin_tg_id, event, days, bot_instance, col_aliases
             f"📧 Email: `{alias_email}`\n"
             f"⏰ Expires: {format_datetime(expires_at)}\n"
             f"⏳ Duration: {days} days\n\n"
-            f"🔑 **Web Login Password:** `{web_password}`\n\n"
-            "You can use this password to log into the web inbox.\n"
-            "You'll also receive mails sent to this address.",
+            f"🔑 **Web Login Password:** `{web_password}`\n"
+            f"🌐 **Web Login:** {WEB_BASE_URL}\n\n"
+            "Save this password! Use it to log into the web inbox.",
             buttons=[
                 [Button.inline("📧 View My Emails", cb("M", "emails"))],
                 [Button.inline("🔑 Web Password", cb("M", "webpass"))]
@@ -1369,33 +1404,6 @@ async def finalize_add_email(admin_tg_id, event, days, bot_instance, col_aliases
         ]
     )
 
-
-# =====================================================================
-# PROCESS EMAIL  (SMTP handler) — sends to ALL admins on fallback
-# =====================================================================
-async def process_incoming_email(rcpt_to: str, raw_data: bytes):
-    try:
-        msg = email.message_from_bytes(raw_data)
-        to_addr = rcpt_to.lower().strip()
-
-        for (bot_instance, col_aliases, col_users, col_logs, alias_cache,
-             super_admin_ids, user_cache, bot_label) in [
-            (bot1, bot1_col_aliases, bot1_col_users, bot1_col_logs, bot1_alias_cache,
-             BOT1_SUPER_ADMIN_IDS, bot1_user_cache, "Bot1"),
-            (bot2, bot2_col_aliases, bot2_col_users, bot2_col_logs, bot2_alias_cache,
-             BOT2_SUPER_ADMIN_IDS, bot2_user_cache, "Bot2"),
-        ]:
-            if to_addr in alias_cache["by_email"]:
-                await _deliver_email(bot_instance, col_aliases, col_users, col_logs,
-                                     alias_cache, super_admin_ids, user_cache, bot_label,
-                                     msg, raw_data, to_addr)
-                return
-
-        logger.warning(f"[SMTP] No alias found for {to_addr}, routing to Bot1 first admin")
-        await _admin_fallback_email(bot1, bot1_col_logs, BOT1_SUPER_ADMIN_IDS,
-                                    msg, to_addr, to_addr, "unassigned")
-    except Exception as e:
-        logger.error(f"[SMTP] Error processing email for {rcpt_to}: {e}")
 
 async def _deliver_email(bot_instance, col_aliases, col_users, col_logs,
                           alias_cache, super_admin_ids, user_cache, bot_label,
@@ -1445,6 +1453,7 @@ async def _deliver_email(bot_instance, col_aliases, col_users, col_logs,
                 tg_user_id, text,
                 buttons=[
                     [Button.inline("📖 Read Full Mail", cb("ML", dedupe_key[:20]))],
+                    [Button.url("🌐 Read on Web", f"{WEB_BASE_URL}")],
                     [Button.inline("📥 Go to Inbox", cb("M", "inbox", "0"))]
                 ]
             )
@@ -1514,23 +1523,31 @@ async def _admin_fallback_email(bot_instance, col_logs, super_admin_ids,
         pass
 
 
-# =====================================================================
-# SMTP HANDLER
-# =====================================================================
-class MasterSMTPHandler:
-    async def handle_DATA(self, server, session, envelope):
-        try:
-            raw_data = envelope.content
-            for rcpt in envelope.rcpt_tos:
-                await process_incoming_email(rcpt, raw_data)
-        except Exception as e:
-            logger.error(f"[SMTP] handle_DATA error: {e}")
-        return '250 Message accepted for delivery'
+async def process_incoming_email(rcpt_to: str, raw_data: bytes):
+    try:
+        msg = email.message_from_bytes(raw_data)
+        to_addr = rcpt_to.lower().strip()
+
+        for (bot_instance, col_aliases, col_users, col_logs, alias_cache,
+             super_admin_ids, user_cache, bot_label) in [
+            (bot1, bot1_col_aliases, bot1_col_users, bot1_col_logs, bot1_alias_cache,
+             BOT1_SUPER_ADMIN_IDS, bot1_user_cache, "Bot1"),
+            (bot2, bot2_col_aliases, bot2_col_users, bot2_col_logs, bot2_alias_cache,
+             BOT2_SUPER_ADMIN_IDS, bot2_user_cache, "Bot2"),
+        ]:
+            if to_addr in alias_cache["by_email"]:
+                await _deliver_email(bot_instance, col_aliases, col_users, col_logs,
+                                     alias_cache, super_admin_ids, user_cache, bot_label,
+                                     msg, raw_data, to_addr)
+                return
+
+        logger.warning(f"[Email] No alias found for {to_addr}, routing to admin")
+        await _admin_fallback_email(bot1, bot1_col_logs, BOT1_SUPER_ADMIN_IDS,
+                                    msg, to_addr, to_addr, "unassigned")
+    except Exception as e:
+        logger.error(f"[Email] Error processing email for {rcpt_to}: {e}")
 
 
-# =====================================================================
-# CALLBACK HANDLER FACTORY
-# =====================================================================
 def make_callback_handler(
     bot_instance, col_users, col_aliases, col_logs,
     alias_cache, alias_token_cache_dict,
@@ -1613,7 +1630,37 @@ def make_callback_handler(
                 })).deleted_count
                 count_cache.clear()
                 return await event.answer(f"✅ Cleaned {deleted_count} deleted mails, {expired_count} old aliases", alert=True)
+            elif action == "bulkpw":
+                no_pw = await col_aliases.count_documents({"$or": [{"password": {"$exists": False}}, {"password": None}, {"password": ""}]})
+                if no_pw == 0:
+                    return await event.answer("✅ All aliases already have passwords!", alert=True)
+                return await event.edit(
+                    f"🔑 **Bulk Set Passwords**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"Found **{no_pw}** aliases without web passwords.\n\n"
+                    "This will:\n"
+                    "• Generate a password for each\n"
+                    "• Notify each user via Telegram\n\n"
+                    "Proceed?",
+                    buttons=[
+                        [Button.inline("✅ Set All Passwords", cb("BPW", "confirm"))],
+                        [Button.inline("❌ Cancel", cb("A", "back"))]
+                    ]
+                )
             return
+
+        if parts[0] == "BPW":
+            if not await _is_admin():
+                return await event.answer("❌ Admin only", alert=True)
+            if parts[1] == "confirm":
+                await event.edit("🔄 Setting passwords... Please wait.")
+                count = await bulk_set_passwords(col_aliases, bot_instance, super_admin_ids)
+                count_cache.clear()
+                return await event.edit(
+                    f"✅ **Bulk Password Set Complete!**\n\n"
+                    f"🔑 Set passwords for **{count}** aliases.\n"
+                    "All users have been notified.",
+                    buttons=[[Button.inline("⬅️ Dashboard", cb("A", "back"))]]
+                )
 
         if parts[0] == "AI":
             if not await _is_admin():
@@ -1734,6 +1781,34 @@ def make_callback_handler(
             elif action == "inbox":
                 page = int(parts[3]) if len(parts) > 3 else 0
                 return await show_admin_user_inbox(event, tg_id, col_users, col_logs, user_cache, page)
+            elif action == "weblogins":
+                return await show_admin_web_logins(event, tg_id, col_users, col_aliases, user_cache)
+            elif action == "resetallpw":
+                aliases = await col_aliases.find({"tg_user_id": tg_id}).to_list(50)
+                count = 0
+                pw_list = []
+                for a in aliases:
+                    new_pw = generate_web_password(14)
+                    hashed = hash_password(new_pw)
+                    await col_aliases.update_one(
+                        {"alias_email": a["alias_email"]},
+                        {"$set": {"password": hashed, "updated_at": now_utc()}}
+                    )
+                    pw_list.append(f"📧 `{a['alias_email']}`\n🔑 `{new_pw}`")
+                    count += 1
+                if pw_list:
+                    try:
+                        pw_text = "\n\n".join(pw_list)
+                        await bot_instance.send_message(
+                            tg_id,
+                            f"🔑 **All Passwords Reset!**\n━━━━━━━━━━━━━━━━━━━━\n\n{pw_text}\n\n"
+                            f"🌐 Login at: {WEB_BASE_URL}\n\n⚠️ Save these! They won't be shown again.",
+                            buttons=[[Button.inline("🔑 My Passwords", cb("M", "webpass"))]]
+                        )
+                    except Exception:
+                        pass
+                await event.answer(f"✅ Reset {count} passwords", alert=True)
+                return await show_user_detail(event, tg_id, col_users, col_aliases, col_logs, user_cache)
             elif action == "delconfirm":
                 u = await cached_find_user(tg_id, col_users, user_cache)
                 uname = u.get("name", "Unknown") if u else "Unknown"
@@ -1819,6 +1894,44 @@ def make_callback_handler(
                     f"🔄 **Reassign Email**\n\nEmail: `{ae}`\n\nSend new user's ID or @username:",
                     buttons=[[Button.inline("❌ Cancel", cb("X", "cancel"))]]
                 )
+            if action_val == "resetpw":
+                ae = alias_token_cache_dict.get(token)
+                if not ae:
+                    return await event.answer("❌ Email not found", alert=True)
+                alias = await col_aliases.find_one({"alias_email": ae})
+                if not alias:
+                    return await event.answer("❌ Alias not found", alert=True)
+                new_pw = generate_web_password(14)
+                hashed = hash_password(new_pw)
+                await col_aliases.update_one({"alias_email": ae}, {"$set": {"password": hashed, "updated_at": now_utc()}})
+                tg_id = alias.get("tg_user_id")
+                if tg_id:
+                    try:
+                        await bot_instance.send_message(
+                            tg_id,
+                            f"🔑 **Password Reset by Admin**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                            f"📧 Email: `{ae}`\n🔑 New Password: `{new_pw}`\n\n"
+                            f"🌐 Login: {WEB_BASE_URL}",
+                            buttons=[[Button.inline("🔑 My Passwords", cb("M", "webpass"))]]
+                        )
+                    except Exception:
+                        pass
+                await event.answer("✅ Password reset & user notified", alert=True)
+                return await show_alias_detail(event, ae, col_users, col_aliases, col_logs, user_cache)
+            if action_val == "toggle":
+                ae = alias_token_cache_dict.get(token)
+                if not ae:
+                    return await event.answer("❌ Email not found", alert=True)
+                alias = await col_aliases.find_one({"alias_email": ae})
+                if not alias:
+                    return await event.answer("❌ Alias not found", alert=True)
+                new_active = not alias.get("active", True)
+                await col_aliases.update_one({"alias_email": ae}, {"$set": {"active": new_active, "updated_at": now_utc()}})
+                await refresh_cache_fn(force=True)
+                count_cache.clear()
+                status_str = "activated" if new_active else "deactivated"
+                await event.answer(f"✅ Email {status_str}", alert=True)
+                return await show_alias_detail(event, ae, col_users, col_aliases, col_logs, user_cache)
             if action_val and action_val.isdigit():
                 days = int(action_val)
                 ae = alias_token_cache_dict.get(token)
@@ -1946,6 +2059,20 @@ def make_callback_handler(
                 return await show_user_stats(event, col_users, col_aliases, col_logs, user_cache, edit=True)
             elif action == "webpass":
                 return await show_web_passwords(event, col_aliases, edit=True)
+            elif action == "chgpass":
+                aliases = await col_aliases.find({"tg_user_id": event.sender_id, "active": True}).to_list(50)
+                if not aliases:
+                    return await event.answer("❌ No active emails.", alert=True)
+                btns = []
+                for a in aliases:
+                    token = sha256(a["alias_email"])[:12]
+                    btns.append([Button.inline(f"🔐 {short(a['alias_email'], 28)}", cb("CP", token))])
+                btns.append([Button.inline("⬅️ Back", cb("M", "back"))])
+                return await event.edit(
+                    "🔐 **Change Password**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                    "Select which email's password to change:",
+                    buttons=btns
+                )
             elif action == "settings":
                 return await show_user_settings(event, col_users, user_cache, edit=True)
             elif action == "help":
@@ -1954,6 +2081,26 @@ def make_callback_handler(
                 page = int(parts[2]) if len(parts) > 2 else 0
                 return await show_starred(event, col_logs, page=page, edit=True)
             return
+
+        if parts[0] == "CP":
+            token = parts[1] if len(parts) > 1 else ""
+            alias_email = alias_token_cache_dict.get(token)
+            if not alias_email:
+                return await event.answer("❌ Email not found.", alert=True)
+            alias = await col_aliases.find_one({"alias_email": alias_email, "tg_user_id": event.sender_id})
+            if not alias:
+                return await event.answer("❌ Not your email.", alert=True)
+            admin_state[event.sender_id] = {
+                "stage": "change_password_wait",
+                "payload": {"alias_email": alias_email, "token": token}
+            }
+            return await event.edit(
+                f"🔐 **Change Password**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📧 Email: `{alias_email}`\n\n"
+                "Send your **new password** (min 8 characters):\n"
+                "Or type `generate` to auto-generate one.",
+                buttons=[[Button.inline("❌ Cancel", cb("M", "back"))]]
+            )
 
         if parts[0] == "WP":
             return await handle_web_password_callback(event, parts, col_aliases, alias_token_cache_dict)
@@ -1988,7 +2135,8 @@ def make_callback_handler(
                 [Button.inline("🗑️ Delete", cb("MD", log_id_prefix)),
                  Button.inline("⭐ Star/Unstar", cb("MK", log_id_prefix))],
                 [Button.inline("📩 Mark Unread", cb("MU", log_id_prefix)),
-                 Button.inline("⬅️ Inbox", cb("M", "inbox", "0"))],
+                 Button.url("🌐 Read on Web", f"{WEB_BASE_URL}")],
+                [Button.inline("⬅️ Inbox", cb("M", "inbox", "0"))],
             ]
             return await event.edit(text, buttons=buttons, link_preview=False)
 
@@ -2059,9 +2207,6 @@ def make_callback_handler(
     return on_callback
 
 
-# =====================================================================
-# MESSAGE HANDLER FACTORY
-# =====================================================================
 def make_message_handler(
     bot_instance, col_users, col_aliases, col_logs,
     alias_cache, alias_token_cache_dict,
@@ -2097,6 +2242,34 @@ def make_message_handler(
                 if text in quick_actions:
                     return await quick_actions[text]()
             return
+
+        if st.get("stage") == "change_password_wait":
+            alias_email = st["payload"]["alias_email"]
+            if text.lower() == "generate":
+                new_pw = generate_web_password(14)
+            else:
+                if len(text) < 8:
+                    return await event.reply("❌ Password must be at least 8 characters.", buttons=[[Button.inline("❌ Cancel", cb("M", "back"))]])
+                if len(text) > 128:
+                    return await event.reply("❌ Password too long (max 128).", buttons=[[Button.inline("❌ Cancel", cb("M", "back"))]])
+                new_pw = text
+            hashed = hash_password(new_pw)
+            await col_aliases.update_one(
+                {"alias_email": alias_email, "tg_user_id": event.sender_id},
+                {"$set": {"password": hashed, "updated_at": now_utc()}}
+            )
+            admin_state.pop(event.sender_id, None)
+            display_pw = new_pw if text.lower() == "generate" else "••••••••"
+            return await event.reply(
+                f"✅ **Password Changed!**\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📧 Email: `{alias_email}`\n"
+                f"🔑 Password: `{display_pw}`\n\n"
+                f"🌐 Login at: {WEB_BASE_URL}",
+                buttons=[
+                    [Button.inline("🔑 My Passwords", cb("M", "webpass"))],
+                    [Button.inline("⬅️ Dashboard", cb("M", "back"))]
+                ]
+            )
 
         if not await _is_admin():
             admin_state.pop(event.sender_id, None)
@@ -2308,9 +2481,6 @@ def make_message_handler(
     return on_message
 
 
-# =====================================================================
-# /start, /admin, /help, /inbox, /stats HANDLERS
-# =====================================================================
 def make_start_handler(bot_instance, col_users, col_aliases, col_logs, super_admin_ids, user_cache, count_cache):
     async def on_start(event):
         sender   = event.sender
@@ -2359,9 +2529,6 @@ def make_stats_cmd_handler(col_users, col_aliases, col_logs, user_cache):
     return on_stats_cmd
 
 
-# =====================================================================
-# REGISTER HANDLERS
-# =====================================================================
 def register_bot_handlers(
     bot_instance, col_users, col_aliases, col_logs,
     alias_cache, alias_token_cache_dict,
@@ -2398,9 +2565,6 @@ def register_bot_handlers(
     bot_instance.add_event_handler(message_handler, events.NewMessage())
 
 
-# =====================================================================
-# PERIODIC CACHE REFRESH
-# =====================================================================
 async def cache_refresh_loop():
     while True:
         try:
@@ -2413,18 +2577,16 @@ async def cache_refresh_loop():
         await asyncio.sleep(30)
 
 
-# =====================================================================
-# MAIN
-# =====================================================================
 async def main():
     logger.info("=" * 60)
-    logger.info("  MasterMailBot — Dual Bot + SMTP + uvloop + TTL Cache")
+    logger.info("  ZayMail Bot — Dual Bot + TTL Cache + uvloop")
     logger.info(f"  uvloop: {'✅ Active' if _UVLOOP else '❌ Not installed'}")
+    logger.info(f"  Web: {WEB_BASE_URL}")
     logger.info("=" * 60)
 
     await bot1.start(bot_token=BOT1_TG_TOKEN)
     await bot2.start(bot_token=BOT2_TG_TOKEN)
-    logger.info("✅ Bot1 (Nihal) and Bot2 (Maruf) connected")
+    logger.info("✅ Bot1 and Bot2 connected")
 
     await asyncio.gather(
         ensure_indexes(bot1_col_users, bot1_col_aliases, bot1_col_logs),
@@ -2456,14 +2618,6 @@ async def main():
     )
     logger.info("✅ Event handlers registered")
 
-    smtp_controller = None
-    if AIOSMTPD_AVAILABLE:
-        smtp_controller = Controller(MasterSMTPHandler(), hostname=SMTP_HOST, port=SMTP_PORT)
-        smtp_controller.start()
-        logger.info(f"✅ SMTP server on {SMTP_HOST}:{SMTP_PORT}")
-    else:
-        logger.warning("⚠️  aiosmtpd not installed — SMTP disabled. Run: pip install aiosmtpd")
-
     refresh_task = asyncio.create_task(cache_refresh_loop())
     logger.info("✅ Background cache refresh (30s)")
     logger.info("🚀 All systems online!")
@@ -2479,13 +2633,11 @@ async def main():
             await refresh_task
         except Exception:
             pass
-        if smtp_controller:
-            smtp_controller.stop()
         await bot1.disconnect()
         await bot2.disconnect()
         mongo1.close()
         mongo2.close()
-        logger.info("👋 MasterMailBot shut down.")
+        logger.info("👋 ZayMail Bot shut down.")
 
 
 if __name__ == "__main__":
